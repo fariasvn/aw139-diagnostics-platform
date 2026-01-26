@@ -7,12 +7,11 @@ var __export = (target, all) => {
 // server/index-prod.ts
 import "dotenv/config";
 import fs from "node:fs";
-import path2 from "node:path";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express2 from "express";
 
 // server/app.ts
-import { spawn } from "node:child_process";
-import path from "node:path";
 import express from "express";
 
 // server/routes.ts
@@ -331,6 +330,14 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { neonConfig, Pool } from "@neondatabase/serverless";
 import ws from "ws";
 neonConfig.webSocketConstructor = ws;
+process.on("uncaughtException", (err) => {
+  if (err.message?.includes("terminating connection") || err.message?.includes("57P01") || err.message?.includes("administrator command")) {
+    console.error("[database] Connection terminated by server, will reconnect on next query:", err.message);
+  } else {
+    console.error("[fatal] Uncaught exception:", err);
+    process.exit(1);
+  }
+});
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL must be set. Did you forget to provision a database?"
@@ -340,6 +347,11 @@ var pool = new Pool({ connectionString: process.env.DATABASE_URL });
 var db = drizzle(pool, { schema: schema_exports });
 var dbConnected = false;
 var dbError = null;
+pool.on("error", (err) => {
+  dbConnected = false;
+  dbError = err.message;
+  console.error("[database] Pool error (will attempt reconnect):", err.message);
+});
 pool.connect().then(() => {
   dbConnected = true;
   dbError = null;
@@ -1997,59 +2009,6 @@ async function registerRoutes(app2) {
 }
 
 // server/app.ts
-var ragProcess = null;
-var crewProcess = null;
-function startPythonServers() {
-  const workDir = path.resolve(import.meta.dirname, "..");
-  console.log("[startup] Starting RAG API on port 8000...");
-  ragProcess = spawn("python3", ["rag_api.py"], {
-    cwd: workDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true
-  });
-  ragProcess.stdout?.on("data", (data) => {
-    const msg = data.toString().trim();
-    if (msg) console.log(`[RAG] ${msg}`);
-  });
-  ragProcess.stderr?.on("data", (data) => {
-    const msg = data.toString().trim();
-    if (msg) console.log(`[RAG] ${msg}`);
-  });
-  ragProcess.on("error", (err) => {
-    console.error(`[RAG] Failed to start: ${err.message}`);
-  });
-  setTimeout(() => {
-    console.log("[startup] Starting CrewAI Server on port 9000...");
-    crewProcess = spawn("python3", ["crew_server.py"], {
-      cwd: workDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true
-    });
-    crewProcess.stdout?.on("data", (data) => {
-      const msg = data.toString().trim();
-      if (msg) console.log(`[CrewAI] ${msg}`);
-    });
-    crewProcess.stderr?.on("data", (data) => {
-      const msg = data.toString().trim();
-      if (msg) console.log(`[CrewAI] ${msg}`);
-    });
-    crewProcess.on("error", (err) => {
-      console.error(`[CrewAI] Failed to start: ${err.message}`);
-    });
-  }, 3e3);
-}
-startPythonServers();
-process.on("SIGINT", () => {
-  console.log("[shutdown] Stopping Python servers...");
-  if (ragProcess) ragProcess.kill();
-  if (crewProcess) crewProcess.kill();
-  process.exit(0);
-});
-process.on("SIGTERM", () => {
-  if (ragProcess) ragProcess.kill();
-  if (crewProcess) crewProcess.kill();
-  process.exit(0);
-});
 function log(message, source = "express") {
   const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -2060,30 +2019,32 @@ function log(message, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 var app = express();
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    req.rawBody = buf;
-  }
-}));
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
 app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   const start = Date.now();
-  const path3 = req.path;
-  let capturedJsonResponse = void 0;
-  const originalResJson = res.json;
+  const reqPath = req.path;
+  let capturedJsonResponse;
+  const originalResJson = res.json.bind(res);
   res.json = function(bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
+    return originalResJson(bodyJson, ...args);
   };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path3.startsWith("/api")) {
-      let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
+    if (reqPath.startsWith("/api")) {
+      let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "\u2026";
+      if (logLine.length > 120) {
+        logLine = logLine.slice(0, 119) + "\u2026";
       }
       log(logLine);
     }
@@ -2100,46 +2061,51 @@ async function runApp(setup) {
   });
   await setup(app, server);
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  server.listen(
+    {
+      port,
+      host: "0.0.0.0",
+      reusePort: true
+    },
+    () => {
+      log(`serving on port ${port}`);
+    }
+  );
 }
 
 // server/index-prod.ts
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path.dirname(__filename);
 console.log("[startup] Production server initializing...");
 console.log("[startup] NODE_ENV:", process.env.NODE_ENV || "not set");
 console.log("[startup] PORT:", process.env.PORT || "5000 (default)");
-console.log("[startup] DATABASE_URL:", process.env.DATABASE_URL ? "configured" : "NOT SET");
-console.log("[startup] SESSION_SECRET:", process.env.SESSION_SECRET ? "configured" : "NOT SET");
-console.log("[startup] OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "configured" : "NOT SET");
+console.log(
+  "[startup] DATABASE_URL:",
+  process.env.DATABASE_URL ? "configured" : "NOT SET"
+);
 async function serveStatic(app2, _server) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
+  const distPath = path.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
     console.error(`[startup] Build directory not found: ${distPath}`);
-    console.error("[startup] Make sure to run 'npm run build' before starting production server");
     app2.use("*", (_req, res) => {
       res.status(503).json({
         error: "Application not built",
-        message: "The frontend assets are not available. Please build the application first."
+        message: "Frontend assets not found. Run build first."
       });
     });
     return;
   }
   app2.use(express2.static(distPath));
   app2.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
+    res.sendFile(path.join(distPath, "index.html"));
   });
 }
 (async () => {
   try {
     await runApp(serveStatic);
-  } catch (error) {
-    console.error("[startup] Fatal error during startup:", error.message);
-    console.error("[startup] Server will attempt to continue with limited functionality");
+  } catch (err) {
+    console.error("[startup] Fatal error:", err?.message || err);
+    process.exit(1);
   }
 })();
 export {

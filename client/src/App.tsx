@@ -61,7 +61,11 @@ function AuthenticatedApp() {
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) {
+  // VPS/Production mode: bypass authentication for self-hosted deployments
+  const isVPSMode = typeof window !== 'undefined' && 
+    !window.location.hostname.includes('replit');
+
+  if (isLoading && !isVPSMode) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -69,7 +73,8 @@ function Router() {
     );
   }
 
-  if (!isAuthenticated) {
+  // Show Landing only on Replit when not authenticated
+  if (!isAuthenticated && !isVPSMode) {
     return <Landing />;
   }
 
