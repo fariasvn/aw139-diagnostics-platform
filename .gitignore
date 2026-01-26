@@ -1,0 +1,85 @@
+# Dependencies
+node_modules/
+.pythonlibs/
+
+# Build outputs (dist/ INCLUDED for production deployment)
+# dist/
+server/public/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Logs
+*.log
+*.log.*
+
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Replit specific
+.replit
+.cache/
+.local/
+.upm/
+.config/
+
+# Vite
+vite.config.ts.*
+
+# Large data files - MUST EXCLUDE
+embeddings.json
+embeddings.json.gz
+embeddings_parts/
+data.zip
+xml_data/
+pdf_data/
+vectorstore/
+
+# Attached assets - Large files excluded, images moved to client/public
+attached_assets/
+
+# Archives and binaries
+*.tar.gz
+*.zip
+*.pdf
+*.bin
+*.so
+
+# Test reports and development artifacts
+fix_report.txt
+rag_selftest_report.json
+ingestion_checkpoint.json
+embeddings.json.tmp
+
+# Checkpoints and generated files
+*.checkpoint
+*.checkpoint.json
+
+# Duplicate export folders (cleanup)
+clean_export/
+clean_export_v2/
+clean_export_v3/
+
+# Local connector data
+local_connector/*.db
+local_connector/*.sqlite

@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  aw139-diagnostic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aw139-app
+    restart: unless-stopped
+    
+    ports:
+      - "5000:5000"
+    
+    environment:
+      # === OBRIGATORIAS ===
+      - NODE_ENV=production
+      - PORT=5000
+      - DATABASE_URL=${DATABASE_URL}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # === OPCIONAIS ===
+      # - REPL_ID=${REPL_ID}
+      # - IETP_CONNECTOR_URL=${IETP_CONNECTOR_URL}
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
