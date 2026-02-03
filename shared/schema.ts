@@ -21,13 +21,16 @@ export const sessions = pgTable(
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
+  password: varchar("password"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  role: text("role").notNull().default("user"),
   planType: text("plan_type").notNull().default("BASIC"),
   dailyRequestCount: integer("daily_request_count").notNull().default(0),
   lastRequestDate: text("last_request_date"),
   disclaimerAcknowledgedAt: timestamp("disclaimer_acknowledged_at"),
+  isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
