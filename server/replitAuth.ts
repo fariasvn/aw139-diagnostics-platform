@@ -195,6 +195,24 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Check session-based auth first (for VPS email/password login)
+  const sessionReq = req as any;
+  if (sessionReq.session?.userId) {
+    // Set user claims from session for compatibility with routes
+    if (!sessionReq.user) {
+      sessionReq.user = {
+        claims: {
+          sub: sessionReq.session.userId,
+          email: sessionReq.session.user?.email || "",
+          first_name: sessionReq.session.user?.firstName || "",
+          last_name: sessionReq.session.user?.lastName || "",
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 86400,
+      };
+    }
+    return next();
+  }
+  
   if (!authEnabled) {
     (req as any).user = {
       claims: {

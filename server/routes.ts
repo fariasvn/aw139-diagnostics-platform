@@ -1005,9 +1005,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // USER MANAGEMENT ROUTES (Admin only)
   // ================================================================================
 
-  // GET /api/admin/users - List all users
-  app.get("/api/admin/users", async (req: any, res) => {
+  // GET /api/admin/users - List all users (Admin only)
+  app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
     try {
+      // Verify admin role
+      const adminId = req.session?.userId || req.user?.claims?.sub;
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId)).limit(1);
+      
+      if (!admin || admin.role !== 'admin') {
+        return res.status(403).json({ error: "Acesso restrito a administradores" });
+      }
+      
       const usersList = await db.select({
         id: users.id,
         email: users.email,
@@ -1025,11 +1033,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PATCH /api/admin/users/:id - Update user (activate/deactivate)
-  app.patch("/api/admin/users/:id", async (req: any, res) => {
+  // PATCH /api/admin/users/:id - Update user (Admin only)
+  app.patch("/api/admin/users/:id", isAuthenticated, async (req: any, res) => {
     try {
+      // Verify admin role
+      const adminId = req.session?.userId || req.user?.claims?.sub;
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId)).limit(1);
+      
+      if (!admin || admin.role !== 'admin') {
+        return res.status(403).json({ error: "Acesso restrito a administradores" });
+      }
+      
       const { id } = req.params;
       const { isActive, role, planType } = req.body;
+      
+      // Validate payload
+      if (isActive !== undefined && typeof isActive !== 'number') {
+        return res.status(400).json({ error: "isActive deve ser 0 ou 1" });
+      }
+      if (role !== undefined && !['user', 'admin'].includes(role)) {
+        return res.status(400).json({ error: "role deve ser 'user' ou 'admin'" });
+      }
+      if (planType !== undefined && !['BASIC', 'ENTERPRISE'].includes(planType)) {
+        return res.status(400).json({ error: "planType deve ser 'BASIC' ou 'ENTERPRISE'" });
+      }
       
       const updateData: any = { updatedAt: new Date() };
       if (isActive !== undefined) updateData.isActive = isActive;
@@ -1042,13 +1069,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .returning();
       
       if (!updated) {
-        return res.status(404).json({ error: "User not found" });
+        return res.status(404).json({ error: "Usuário não encontrado" });
       }
       
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating user:", error);
-      res.status(500).json({ error: "Failed to update user" });
+      res.status(500).json({ error: "Erro ao atualizar usuário" });
     }
   });
 
