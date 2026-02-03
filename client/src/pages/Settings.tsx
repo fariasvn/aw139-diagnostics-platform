@@ -90,9 +90,9 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <Label>Diagnostic History Retention</Label>
-                <p className="text-sm text-muted-foreground">Keep diagnostic records for compliance</p>
+                <p className="text-sm text-muted-foreground">O profissional pode sair, o conhecimento fica!</p>
               </div>
-              <span className="text-sm text-muted-foreground">365 days</span>
+              <span className="text-sm font-semibold text-primary">Permanente</span>
             </div>
             <div className="flex items-center justify-between">
               <div>
