@@ -10,7 +10,7 @@ import {
   SidebarHeader,
   SidebarFooter
 } from "@/components/ui/sidebar";
-import { Home, FileText, History, Wrench, Settings, Plane, Package, BarChart3, AlertTriangle, LogOut, UserCog } from "lucide-react";
+import { Home, FileText, History, Wrench, Settings, Plane, Package, BarChart3, AlertTriangle, LogOut, UserCog, Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import QuotaIndicator from "./QuotaIndicator";
@@ -28,6 +28,7 @@ const menuItems = [
 
 const adminItems = [
   { title: "Manage Experts", icon: UserCog, url: "/admin/experts" },
+  { title: "Manage Users", icon: Users, url: "/admin/users" },
 ];
 
 interface AppSidebarProps {
@@ -37,8 +38,13 @@ interface AppSidebarProps {
 }
 
 export default function AppSidebar({ planType = "BASIC", remaining = 3, user }: AppSidebarProps) {
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      window.location.href = "/";
+    } catch (error) {
+      window.location.href = "/api/logout";
+    }
   };
 
   const getUserInitials = () => {

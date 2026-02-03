@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { insertDiagnosticQuerySchema, solutionSubmissionSchema, insertExpertSchema, DEMO_TENANT_ID } from "@shared/schema";
 import { analyzeDiagnosticQuery } from "./diagnostic-engine";
 import { analyzeATASystem } from "./ata-analytics";
@@ -30,7 +31,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       services: {
         database: {
           connected: dbStatus.connected,
-          available: dbStatus.available,
           error: dbStatus.error
         },
         authentication: {
@@ -72,12 +72,147 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (with graceful failure)
   await setupAuth(app);
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  // ============================================================
+  // LOCAL AUTH ROUTES (Email/Password) - For VPS deployments
+  // ============================================================
+  
+  // POST /api/auth/login - Email/password login
+  app.post('/api/auth/login', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email e senha são obrigatórios" });
+      }
+      
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      
+      if (!user) {
+        return res.status(401).json({ message: "Email ou senha incorretos" });
+      }
+      
+      if (!user.password) {
+        return res.status(401).json({ message: "Usuário não possui senha configurada" });
+      }
+      
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Email ou senha incorretos" });
+      }
+      
+      if (user.isActive === 0) {
+        return res.status(403).json({ message: "Conta desativada. Contate o administrador." });
+      }
+      
+      // Set session
+      req.session.userId = user.id;
+      req.session.user = {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        planType: user.planType
+      };
+      
+      res.json({ 
+        success: true, 
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          planType: user.planType
+        }
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Erro interno no login" });
+    }
+  });
+  
+  // POST /api/auth/logout - Logout
+  app.post('/api/auth/logout', (req: any, res) => {
+    req.session.destroy((err: any) => {
+      if (err) {
+        return res.status(500).json({ message: "Erro ao fazer logout" });
+      }
+      res.clearCookie('connect.sid');
+      res.json({ success: true });
+    });
+  });
+  
+  // POST /api/auth/register - Admin creates user (requires admin role)
+  app.post('/api/auth/register', isAuthenticated, async (req: any, res) => {
+    try {
+      const adminId = req.session?.userId || req.user?.claims?.sub;
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId)).limit(1);
+      
+      if (!admin || admin.role !== 'admin') {
+        return res.status(403).json({ message: "Apenas administradores podem criar usuários" });
+      }
+      
+      const { email, password, firstName, lastName, role, planType } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email e senha são obrigatórios" });
+      }
+      
+      const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      if (existingUser.length > 0) {
+        return res.status(409).json({ message: "Email já cadastrado" });
+      }
+      
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      const [newUser] = await db.insert(users).values({
+        email,
+        password: hashedPassword,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        role: role || 'user',
+        planType: planType || 'ENTERPRISE',
+        isActive: 1
+      }).returning();
+      
+      res.status(201).json({
+        success: true,
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName,
+          role: newUser.role,
+          planType: newUser.planType
+        }
+      });
+    } catch (error) {
+      console.error("Register error:", error);
+      res.status(500).json({ message: "Erro ao criar usuário" });
+    }
+  });
+
+  // Auth routes - Updated to support both Replit Auth and local session
+  app.get('/api/auth/user', async (req: any, res) => {
+    try {
+      // Try session-based auth first (for VPS)
+      if (req.session?.userId) {
+        const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
+        if (user) {
+          return res.json(user);
+        }
+      }
+      
+      // Fall back to Replit Auth
+      if (req.user?.claims?.sub) {
+        const userId = req.user.claims.sub;
+        const user = await storage.getUser(userId);
+        return res.json(user);
+      }
+      
+      return res.status(401).json({ message: "Não autenticado" });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -863,6 +998,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching open unavailability:", error);
       res.status(500).json({ error: "Failed to fetch open unavailability data" });
+    }
+  });
+
+  // ================================================================================
+  // USER MANAGEMENT ROUTES (Admin only)
+  // ================================================================================
+
+  // GET /api/admin/users - List all users
+  app.get("/api/admin/users", async (req: any, res) => {
+    try {
+      const usersList = await db.select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        role: users.role,
+        planType: users.planType,
+        isActive: users.isActive,
+        createdAt: users.createdAt
+      }).from(users).orderBy(desc(users.createdAt));
+      res.json(usersList);
+    } catch (error: any) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // PATCH /api/admin/users/:id - Update user (activate/deactivate)
+  app.patch("/api/admin/users/:id", async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive, role, planType } = req.body;
+      
+      const updateData: any = { updatedAt: new Date() };
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (role !== undefined) updateData.role = role;
+      if (planType !== undefined) updateData.planType = planType;
+      
+      const [updated] = await db.update(users)
+        .set(updateData)
+        .where(eq(users.id, id))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Failed to update user" });
     }
   });
 

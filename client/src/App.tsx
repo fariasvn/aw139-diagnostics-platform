@@ -14,7 +14,9 @@ import HistoricalTroubleshooting from "@/pages/HistoricalTroubleshooting";
 import FleetUnavailability from "@/pages/FleetUnavailability";
 import SmartInventory from "@/pages/SmartInventory";
 import AdminExperts from "@/pages/AdminExperts";
+import AdminUsers from "@/pages/AdminUsers";
 import Settings from "@/pages/Settings";
+import Login from "@/pages/Login";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -49,6 +51,7 @@ function AuthenticatedApp() {
                 <Route path="/fleet-unavailability" component={FleetUnavailability} />
                 <Route path="/smart-inventory" component={SmartInventory} />
                 <Route path="/admin/experts" component={AdminExperts} />
+                <Route path="/admin/users" component={AdminUsers} />
                 <Route path="/settings" component={Settings} />
                 <Route component={NotFound} />
               </Switch>
@@ -63,11 +66,11 @@ function AuthenticatedApp() {
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // VPS/Production mode: bypass authentication for self-hosted deployments
+  // VPS/Production mode: uses email/password login
   const isVPSMode = typeof window !== 'undefined' && 
     !window.location.hostname.includes('replit');
 
-  if (isLoading && !isVPSMode) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -75,7 +78,12 @@ function Router() {
     );
   }
 
-  // Show Landing only on Replit when not authenticated
+  // Show Login page on VPS when not authenticated
+  if (!isAuthenticated && isVPSMode) {
+    return <Login />;
+  }
+
+  // Show Landing on Replit when not authenticated
   if (!isAuthenticated && !isVPSMode) {
     return <Landing />;
   }
