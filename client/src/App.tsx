@@ -14,6 +14,7 @@ import HistoricalTroubleshooting from "@/pages/HistoricalTroubleshooting";
 import FleetUnavailability from "@/pages/FleetUnavailability";
 import SmartInventory from "@/pages/SmartInventory";
 import AdminExperts from "@/pages/AdminExperts";
+import Settings from "@/pages/Settings";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -48,6 +49,7 @@ function AuthenticatedApp() {
                 <Route path="/fleet-unavailability" component={FleetUnavailability} />
                 <Route path="/smart-inventory" component={SmartInventory} />
                 <Route path="/admin/experts" component={AdminExperts} />
+                <Route path="/settings" component={Settings} />
                 <Route component={NotFound} />
               </Switch>
             </main>
