@@ -163,12 +163,33 @@ The system automatically determines aircraft configuration (SN/LN/ENH/PLUS) base
 
 ### Authentication & Authorization
 
-**Current Implementation**: Prototype uses mock user authentication
-- Demo user ID: "demo-user-123"
-- In-memory storage (`server/storage.ts`) for development
-- Session management infrastructure present but not fully implemented
+**Dual Authentication System**:
+The application supports two authentication methods for different deployment scenarios:
 
-**Production Considerations**: The codebase includes session management setup (connect-pg-simple) indicating intent for session-based authentication in production.
+1. **Replit Auth (Development/Demo)**: Uses OpenID Connect with Replit's identity provider
+   - Automatic user creation on first login
+   - Session managed via passport.js
+
+2. **Email/Password Auth (VPS Production)**: Traditional credential-based authentication
+   - Bcrypt password hashing with 10 salt rounds
+   - Session-based auth stored in PostgreSQL (`sessions` table)
+   - Admin user management at `/admin/users`
+
+**Key Auth Routes** (`server/routes.ts`):
+- `POST /api/auth/login`: Email/password login (sets session)
+- `POST /api/auth/logout`: Destroys session and clears cookie
+- `POST /api/auth/register`: Admin-only user creation
+- `GET /api/auth/user`: Returns current user (supports both auth methods)
+
+**User Roles**:
+- `admin`: Full access including user management, expert management
+- `user`: Standard access to diagnostic features
+
+**Security Features**:
+- Password never stored in plaintext (bcrypt)
+- Admin-only routes verify role before access
+- Inactive accounts blocked at login (`isActive` field)
+- Session cookies marked httpOnly, secure in production
 
 ### AI Integration
 
