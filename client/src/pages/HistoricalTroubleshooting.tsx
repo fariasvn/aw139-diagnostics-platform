@@ -1,13 +1,18 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { History, Loader2, CheckCircle2, Clock, Wrench, Package, User, Calendar, FileText, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { History, Loader2, CheckCircle2, Clock, Wrench, Package, User, Calendar, FileText, Plus, Trash2, Edit3 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DiagnosticDisclaimerFooter } from "@/components/DisclaimerModal";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface PartReplacement {
   id: string;
@@ -41,8 +46,33 @@ interface TroubleshootingRecord {
   replacedParts?: PartReplacement[];
 }
 
+interface PartFormEntry {
+  partOffPn: string;
+  partOffSn: string;
+  partOffDescription: string;
+  partOnPn: string;
+  partOnSn: string;
+  partOnDescription: string;
+  ataCode: string;
+}
+
+const emptyPart: PartFormEntry = {
+  partOffPn: "",
+  partOffSn: "",
+  partOffDescription: "",
+  partOnPn: "",
+  partOnSn: "",
+  partOnDescription: "",
+  ataCode: "",
+};
+
 export default function HistoricalTroubleshooting() {
+  const { toast } = useToast();
   const [selectedRecord, setSelectedRecord] = useState<TroubleshootingRecord | null>(null);
+  const [resolveRecord, setResolveRecord] = useState<TroubleshootingRecord | null>(null);
+  const [solution, setSolution] = useState("");
+  const [technicianName, setTechnicianName] = useState("");
+  const [replacedParts, setReplacedParts] = useState<PartFormEntry[]>([]);
   
   const { data: history = [], isLoading, error } = useQuery({
     queryKey: ["/api/troubleshooting/history"],
@@ -50,12 +80,81 @@ export default function HistoricalTroubleshooting() {
 
   const records = Array.isArray(history) ? history : [];
 
+  const solveMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await apiRequest("POST", `/api/troubleshooting/${id}/solution`, data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/troubleshooting/history"] });
+      toast({ title: "Solution saved", description: "The troubleshooting record has been resolved." });
+      handleCloseResolve();
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to save solution", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleRowClick = (record: TroubleshootingRecord) => {
     setSelectedRecord(record);
   };
 
   const closeDialog = () => {
     setSelectedRecord(null);
+  };
+
+  const handleOpenResolve = (record: TroubleshootingRecord, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSolution("");
+    setTechnicianName("");
+    setReplacedParts([]);
+    setResolveRecord(record);
+  };
+
+  const handleCloseResolve = () => {
+    setResolveRecord(null);
+    setSolution("");
+    setTechnicianName("");
+    setReplacedParts([]);
+  };
+
+  const handleAddPart = () => {
+    setReplacedParts([...replacedParts, { ...emptyPart }]);
+  };
+
+  const handleRemovePart = (index: number) => {
+    setReplacedParts(replacedParts.filter((_, i) => i !== index));
+  };
+
+  const handlePartChange = (index: number, field: keyof PartFormEntry, value: string) => {
+    const updated = [...replacedParts];
+    updated[index] = { ...updated[index], [field]: value };
+    setReplacedParts(updated);
+  };
+
+  const handleSubmitSolution = () => {
+    if (!resolveRecord || !solution.trim()) return;
+
+    const validParts = replacedParts
+      .filter(p => p.partOffPn.trim() && p.partOnPn.trim())
+      .map(p => ({
+        partOffPn: p.partOffPn.trim(),
+        partOffSn: p.partOffSn.trim() || undefined,
+        partOffDescription: p.partOffDescription.trim() || undefined,
+        partOnPn: p.partOnPn.trim(),
+        partOnSn: p.partOnSn.trim() || undefined,
+        partOnDescription: p.partOnDescription.trim() || undefined,
+        ataCode: p.ataCode.trim() || undefined,
+      }));
+
+    solveMutation.mutate({
+      id: resolveRecord.id,
+      data: {
+        solution: solution.trim(),
+        technicianName: technicianName.trim() || undefined,
+        replacedParts: validParts.length > 0 ? validParts : undefined,
+      },
+    });
   };
 
   return (
@@ -106,6 +205,7 @@ export default function HistoricalTroubleshooting() {
                     <TableHead className="font-semibold">Reported Problem</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Parts</TableHead>
+                    <TableHead className="font-semibold">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -134,12 +234,18 @@ export default function HistoricalTroubleshooting() {
                       </TableCell>
                       <TableCell>
                         {record.solutionStatus === "resolved" ? (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge 
+                            variant="outline" 
+                            className="border-green-600 bg-green-500/15 text-green-700 dark:text-green-400 dark:border-green-500 dark:bg-green-500/20"
+                          >
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Resolved
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">
+                          <Badge 
+                            variant="outline"
+                            className="border-amber-600 bg-amber-500/15 text-amber-700 dark:text-amber-400 dark:border-amber-500 dark:bg-amber-500/20"
+                          >
                             <Clock className="w-3 h-3 mr-1" />
                             Pending
                           </Badge>
@@ -153,6 +259,18 @@ export default function HistoricalTroubleshooting() {
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {record.solutionStatus !== "resolved" && (
+                          <Button
+                            size="sm"
+                            onClick={(e) => handleOpenResolve(record, e)}
+                            data-testid={`button-resolve-${index}`}
+                          >
+                            <Edit3 className="w-3 h-3 mr-1" />
+                            Resolve
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -227,12 +345,18 @@ export default function HistoricalTroubleshooting() {
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">Status</p>
                   {selectedRecord.solutionStatus === "resolved" ? (
-                    <Badge variant="default" className="bg-green-600">
+                    <Badge 
+                      variant="outline" 
+                      className="border-green-600 bg-green-500/15 text-green-700 dark:text-green-400 dark:border-green-500 dark:bg-green-500/20"
+                    >
                       <CheckCircle2 className="w-3 h-3 mr-1" />
                       Resolved
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">
+                    <Badge 
+                      variant="outline"
+                      className="border-amber-600 bg-amber-500/15 text-amber-700 dark:text-amber-400 dark:border-amber-500 dark:bg-amber-500/20"
+                    >
                       <Clock className="w-3 h-3 mr-1" />
                       Pending
                     </Badge>
@@ -321,7 +445,7 @@ export default function HistoricalTroubleshooting() {
                     )}
                     {selectedRecord.partOnPn && (
                       <div className="flex items-start gap-3">
-                        <Badge variant="default" className="bg-green-600 text-xs shrink-0">ON</Badge>
+                        <Badge variant="outline" className="text-xs shrink-0 border-green-600 bg-green-500/15 text-green-700 dark:text-green-400 dark:border-green-500 dark:bg-green-500/20">ON</Badge>
                         <div>
                           <p className="font-mono text-sm">{selectedRecord.partOnPn}</p>
                           {selectedRecord.partOnSn && (
@@ -345,9 +469,176 @@ export default function HistoricalTroubleshooting() {
 
               <DiagnosticDisclaimerFooter />
 
-              <div className="flex justify-end pt-4">
+              <div className="flex justify-end gap-2 pt-4">
+                {selectedRecord.solutionStatus !== "resolved" && (
+                  <Button 
+                    onClick={() => {
+                      closeDialog();
+                      handleOpenResolve(selectedRecord);
+                    }}
+                    data-testid="button-resolve-from-details"
+                  >
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Resolve Task
+                  </Button>
+                )}
                 <Button variant="outline" onClick={closeDialog} data-testid="button-close-details">
                   Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Resolve Dialog */}
+      <Dialog open={!!resolveRecord} onOpenChange={(open) => !open && handleCloseResolve()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit3 className="w-5 h-5 text-primary" />
+              Resolve Troubleshooting Task
+            </DialogTitle>
+            <DialogDescription>
+              {resolveRecord && (
+                <>ATA {resolveRecord.ata} - {resolveRecord.aircraftSerial} - {resolveRecord.problem?.substring(0, 80)}{(resolveRecord.problem?.length || 0) > 80 ? "..." : ""}</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {resolveRecord && (
+            <div className="space-y-6 py-4">
+              {/* Problem context */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Reported Problem</Label>
+                <p className="text-sm bg-muted/50 p-3 rounded-lg">{resolveRecord.problem}</p>
+              </div>
+
+              {resolveRecord.aiSuggestion && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">AI Suggestion</Label>
+                  <p className="text-sm bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-900">
+                    {resolveRecord.aiSuggestion}
+                  </p>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Solution input */}
+              <div className="space-y-2">
+                <Label htmlFor="solution">Solution Applied *</Label>
+                <Textarea
+                  id="solution"
+                  value={solution}
+                  onChange={(e) => setSolution(e.target.value)}
+                  placeholder="Describe the solution applied to resolve this issue..."
+                  className="min-h-[100px]"
+                  data-testid="input-solution"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="technicianName">Technician Name</Label>
+                <Input
+                  id="technicianName"
+                  value={technicianName}
+                  onChange={(e) => setTechnicianName(e.target.value)}
+                  placeholder="Name of the technician who resolved the issue"
+                  data-testid="input-technician-name"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Replaced Parts */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Replaced Parts (Part ON/OFF)</Label>
+                  <Button size="sm" variant="outline" onClick={handleAddPart} data-testid="button-add-part">
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Part
+                  </Button>
+                </div>
+
+                {replacedParts.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No parts replaced. Click "Add Part" if parts were replaced.</p>
+                )}
+
+                {replacedParts.map((part, index) => (
+                  <div key={index} className="border rounded-lg p-4 space-y-3" data-testid={`part-entry-${index}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">Part #{index + 1}</span>
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={() => handleRemovePart(index)}
+                        data-testid={`button-remove-part-${index}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Part OFF - P/N *</Label>
+                        <Input
+                          value={part.partOffPn}
+                          onChange={(e) => handlePartChange(index, "partOffPn", e.target.value)}
+                          placeholder="Part number removed"
+                          className="font-mono text-sm"
+                          data-testid={`input-part-off-pn-${index}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Part OFF - S/N</Label>
+                        <Input
+                          value={part.partOffSn}
+                          onChange={(e) => handlePartChange(index, "partOffSn", e.target.value)}
+                          placeholder="Serial number"
+                          className="font-mono text-sm"
+                          data-testid={`input-part-off-sn-${index}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Part ON - P/N *</Label>
+                        <Input
+                          value={part.partOnPn}
+                          onChange={(e) => handlePartChange(index, "partOnPn", e.target.value)}
+                          placeholder="Part number installed"
+                          className="font-mono text-sm"
+                          data-testid={`input-part-on-pn-${index}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Part ON - S/N</Label>
+                        <Input
+                          value={part.partOnSn}
+                          onChange={(e) => handlePartChange(index, "partOnSn", e.target.value)}
+                          placeholder="Serial number"
+                          className="font-mono text-sm"
+                          data-testid={`input-part-on-sn-${index}`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={handleCloseResolve} data-testid="button-cancel-resolve">
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleSubmitSolution}
+                  disabled={!solution.trim() || solveMutation.isPending}
+                  data-testid="button-submit-solution"
+                >
+                  {solveMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                  ) : (
+                    <><CheckCircle2 className="w-4 h-4 mr-2" /> Save Solution</>
+                  )}
                 </Button>
               </div>
             </div>
