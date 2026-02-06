@@ -175,6 +175,26 @@ If new production series are introduced, the serial_effectivity table must be up
    - Maps part numbers to applicable configurations
    - Enables configuration-aware part filtering from IPD
 
+8. **ipdEffectivityCodes table**:
+   - Stores all 544 IPD effectivity codes from IETP List of Effectivity Codes
+   - Fields: code (unique), description, isDeleted, isConditional, conditionalPartNumber
+   - 4 deleted codes, 12 conditional codes (kit/part dependent), 528 active codes with serial ranges
+   - Source: IETP Illustrated Parts Data - List of Effectivity Codes
+
+9. **ipdEffectivityRanges table**:
+   - 1,387 serial number ranges linked to effectivity codes
+   - Fields: code (FK to ipdEffectivityCodes), serialStart, serialEnd
+   - Indexed for fast range-based lookups (serial_start, serial_end)
+   - Supports formats: "thru" ranges, "and subsequent", single serials, "TBD" boundaries
+
+**IPD Effectivity Resolution System**:
+- Parser (`server/parse-ipd-effectivity.ts`): Extracts all codes and ranges from IETP text file
+- Seeder (`server/seed-ipd-effectivity.ts`): Populates database from parsed data (idempotent - skips if already seeded)
+- API: `GET /api/ipd-effectivity/resolve/:serialNumber` returns all applicable IPD codes for a given serial number
+- API: `GET /api/ipd-effectivity/stats` returns database statistics
+- Resolution query: Uses BETWEEN on indexed serial ranges for O(log n) lookup performance
+- Example: S/N 41287 resolves to 157 applicable codes (including conditional codes)
+
 **Migration Strategy**: Drizzle Kit for schema migrations stored in `/migrations` directory
 
 **Connection Management**: Connection pooling via @neondatabase/serverless with WebSocket support for serverless environments

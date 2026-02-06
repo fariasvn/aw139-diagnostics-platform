@@ -218,6 +218,32 @@ export const serialEffectivity = pgTable("serial_effectivity", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const ipdEffectivityCodes = pgTable("ipd_effectivity_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  description: text("description").notNull(),
+  isDeleted: integer("is_deleted").notNull().default(0),
+  isConditional: integer("is_conditional").notNull().default(0),
+  conditionalPartNumber: text("conditional_part_number"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const ipdEffectivityRanges = pgTable(
+  "ipd_effectivity_ranges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    code: text("code").notNull().references(() => ipdEffectivityCodes.code),
+    serialStart: integer("serial_start").notNull(),
+    serialEnd: integer("serial_end").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ipd_ranges_serial_start").on(table.serialStart),
+    index("idx_ipd_ranges_serial_end").on(table.serialEnd),
+    index("idx_ipd_ranges_code").on(table.code),
+  ],
+);
+
 // Maps parts to their applicable configurations
 export const partEffectivity = pgTable("part_effectivity", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -309,6 +335,8 @@ export type InsertExpert = z.infer<typeof insertExpertSchema>;
 export type AircraftConfiguration = typeof aircraftConfigurations.$inferSelect;
 export type SerialEffectivity = typeof serialEffectivity.$inferSelect;
 export type PartEffectivity = typeof partEffectivity.$inferSelect;
+export type IpdEffectivityCode = typeof ipdEffectivityCodes.$inferSelect;
+export type IpdEffectivityRange = typeof ipdEffectivityRanges.$inferSelect;
 
 // Configuration resolution result type
 export interface ConfigurationResolution {

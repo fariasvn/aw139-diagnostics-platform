@@ -8,7 +8,7 @@ import { analyzeDiagnosticQuery } from "./diagnostic-engine";
 import { analyzeATASystem } from "./ata-analytics";
 import { analyzeSmartStock } from "./smart-stock";
 import { db, getDatabaseStatus } from "../db/index";
-import { experts as expertsTable, dmcTools as dmcToolsTable, diagnosticQueries, users, expertBookings, ataOccurrences, parts, troubleshootingHistory, partReplacements, fleetUnavailability } from "../shared/schema";
+import { experts as expertsTable, dmcTools as dmcToolsTable, diagnosticQueries, users, expertBookings, ataOccurrences, parts, troubleshootingHistory, partReplacements, fleetUnavailability, ipdEffectivityCodes, ipdEffectivityRanges } from "../shared/schema";
 import { eq, desc, sql, like, ilike, and } from "drizzle-orm";
 import { setupAuth, isAuthenticated, isAuthEnabled, getAuthError } from "./replitAuth";
 import { resolveConfiguration, getApplicableParts, getAllConfigurations, getSerialEffectivityRanges } from "./configuration-resolver";
@@ -279,6 +279,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching configurations:", error);
       res.status(500).json({ error: "Failed to fetch configurations" });
+    }
+  });
+
+  app.get("/api/ipd-effectivity/resolve/:serialNumber", isAuthenticated, async (req: any, res) => {
+    try {
+      const serialNumber = req.params.serialNumber;
+      const sn = parseInt(serialNumber);
+
+      if (isNaN(sn) || sn < 31005) {
+        return res.status(400).json({
+          error: "Invalid serial number",
+          details: "Serial number must be a number >= 31005",
+        });
+      }
+
+      const applicableCodes = await db
+        .selectDistinct({
+          code: ipdEffectivityCodes.code,
+          description: ipdEffectivityCodes.description,
+          isConditional: ipdEffectivityCodes.isConditional,
+          conditionalPartNumber: ipdEffectivityCodes.conditionalPartNumber,
+        })
+        .from(ipdEffectivityRanges)
+        .innerJoin(ipdEffectivityCodes, eq(ipdEffectivityRanges.code, ipdEffectivityCodes.code))
+        .where(
+          and(
+            sql`${sn} BETWEEN ${ipdEffectivityRanges.serialStart} AND ${ipdEffectivityRanges.serialEnd}`,
+            eq(ipdEffectivityCodes.isDeleted, 0)
+          )
+        )
+        .orderBy(ipdEffectivityCodes.code);
+
+      const standard = applicableCodes.filter((c) => c.isConditional === 0);
+      const conditional = applicableCodes.filter((c) => c.isConditional === 1);
+
+      res.json({
+        serialNumber: sn,
+        totalApplicableCodes: applicableCodes.length,
+        standardCodes: standard.length,
+        conditionalCodes: conditional.length,
+        codes: applicableCodes.map((c) => ({
+          code: c.code,
+          description: c.description,
+          isConditional: c.isConditional === 1,
+          conditionalPartNumber: c.conditionalPartNumber,
+        })),
+      });
+    } catch (error: any) {
+      console.error("IPD effectivity resolution error:", error);
+      res.status(500).json({ error: "Failed to resolve IPD effectivity codes", details: error.message });
+    }
+  });
+
+  app.get("/api/ipd-effectivity/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const totalCodes = await db.select({ count: sql<number>`count(*)` }).from(ipdEffectivityCodes);
+      const activeCodes = await db.select({ count: sql<number>`count(*)` }).from(ipdEffectivityCodes).where(eq(ipdEffectivityCodes.isDeleted, 0));
+      const totalRanges = await db.select({ count: sql<number>`count(*)` }).from(ipdEffectivityRanges);
+      const conditionalCodes = await db.select({ count: sql<number>`count(*)` }).from(ipdEffectivityCodes).where(eq(ipdEffectivityCodes.isConditional, 1));
+
+      res.json({
+        totalCodes: totalCodes[0]?.count || 0,
+        activeCodes: activeCodes[0]?.count || 0,
+        totalRanges: totalRanges[0]?.count || 0,
+        conditionalCodes: conditionalCodes[0]?.count || 0,
+        source: "IETP List of Effectivity Codes - Illustrated Parts Data",
+      });
+    } catch (error: any) {
+      console.error("IPD effectivity stats error:", error);
+      res.status(500).json({ error: "Failed to get IPD effectivity stats" });
     }
   });
 
