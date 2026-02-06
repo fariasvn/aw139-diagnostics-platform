@@ -55,8 +55,10 @@ xml_data/
 pdf_data/
 vectorstore/
 
-# Attached assets - Large files excluded, images moved to client/public
-attached_assets/
+# Attached assets - exclude screenshots but include generated images
+attached_assets/Captura_*
+attached_assets/image_*
+attached_assets/*.txt
 
 # Archives and binaries
 *.tar.gz
