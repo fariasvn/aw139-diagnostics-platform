@@ -119,7 +119,7 @@ export default function ExpertBookingCard({ experts, reason }: ExpertBookingCard
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
           <div className="flex-1">
-            <CardTitle className="text-xl font-semibold text-destructive-foreground">MCC Expert Support Recommended</CardTitle>
+            <CardTitle className="text-xl font-semibold text-destructive">MCC Expert Support Recommended</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">{reason}</p>
           </div>
         </div>
