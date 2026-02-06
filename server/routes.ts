@@ -805,14 +805,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/troubleshooting/history - Get troubleshooting history with solutions (user-specific)
+  // GET /api/troubleshooting/history - Get all troubleshooting history (shared across all mechanics for shift handover)
   app.get("/api/troubleshooting/history", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
       const { serial, ata, limit: queryLimit } = req.query;
       
       const history = await db.select().from(troubleshootingHistory)
-        .where(eq(troubleshootingHistory.userId, userId))
         .orderBy(desc(troubleshootingHistory.createdAt))
         .limit(parseInt(queryLimit as string) || 50);
       
