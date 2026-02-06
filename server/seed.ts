@@ -1,8 +1,30 @@
 import { db } from "../db/index";
-import { users, experts, dmcTools, diagnosticQueries } from "../shared/schema";
+import { users, experts, dmcTools, diagnosticQueries, serialEffectivity, aircraftConfigurations } from "../shared/schema";
 
 async function seed() {
   console.log("Starting database seed...");
+
+  console.log("Seeding aircraft configurations...");
+  await db.insert(aircraftConfigurations).values([
+    { code: "SN", name: "Short Nose", description: "AW139 Short Nose variant - earliest production configuration" },
+    { code: "LN", name: "Long Nose", description: "AW139 Long Nose variant - extended nose section for additional avionics" },
+    { code: "ENH", name: "Enhanced", description: "AW139 Enhanced variant - improved systems and components" },
+    { code: "PLUS", name: "PLUS", description: "AW139 PLUS variant - latest production configuration with all enhancements" },
+  ]).onConflictDoNothing();
+
+  console.log("Seeding serial effectivity (IETP Table 2 - Applicability Codes)...");
+  await db.insert(serialEffectivity).values([
+    { serialStart: 31005, serialEnd: 31200, configurationCode: "SN", effectivityCode: "1J", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Short Nose - 31xxx series" },
+    { serialStart: 41001, serialEnd: 41200, configurationCode: "SN", effectivityCode: "1J", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Short Nose - 41xxx series" },
+    { serialStart: 31201, serialEnd: 31399, configurationCode: "LN", effectivityCode: "1L", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Long Nose - 31xxx series" },
+    { serialStart: 41201, serialEnd: 41299, configurationCode: "LN", effectivityCode: "1L", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Long Nose - 41xxx series" },
+    { serialStart: 31400, serialEnd: 31699, configurationCode: "ENH", effectivityCode: "A1", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Enhanced - 31xxx series" },
+    { serialStart: 41300, serialEnd: 41499, configurationCode: "ENH", effectivityCode: "A1", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Enhanced - 41xxx series" },
+    { serialStart: 60001, serialEnd: 60999, configurationCode: "ENH", effectivityCode: "A1", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "Enhanced - 60xxx series" },
+    { serialStart: 31700, serialEnd: 40999, configurationCode: "PLUS", effectivityCode: "A8", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "PLUS - 31xxx series and subsequent (per IETP: 31700 and subsequent)" },
+    { serialStart: 41501, serialEnd: 59999, configurationCode: "PLUS", effectivityCode: "A8", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "PLUS - 41xxx series and subsequent (per IETP: 41501 and subsequent)" },
+    { serialStart: 61001, serialEnd: 61999, configurationCode: "PLUS", effectivityCode: "A8", sourceDocument: "IETP List of Effectivity Codes - Table 2", sourceRevision: "Current", notes: "PLUS - 61xxx series" },
+  ]).onConflictDoNothing();
 
   // Seed experts
   console.log("Seeding experts...");

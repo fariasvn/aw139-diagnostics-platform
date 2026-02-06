@@ -368,6 +368,7 @@ export default function Dashboard() {
         serialNumber={diagnosticResult?.aircraft?.serialNumber || liveConfig?.serialNumber || undefined}
         configurationCode={diagnosticResult?.aircraft?.configuration?.code || (liveConfig?.isResolved ? liveConfig?.configuration : null)}
         configurationName={diagnosticResult?.aircraft?.configuration?.name || (liveConfig?.isResolved ? liveConfig?.configurationName : null)}
+        effectivityCode={diagnosticResult?.aircraft?.configuration?.effectivityCode || (liveConfig?.isResolved ? liveConfig?.effectivityCode : null)}
         lastMaintenance="2024-11-20"
         activeQueries={3}
       />

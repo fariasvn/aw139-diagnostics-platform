@@ -94,14 +94,32 @@ The diagnostic engine (`server/diagnostic-engine.ts`) implements the AI analysis
 The system automatically determines aircraft configuration (SN/LN/ENH/PLUS) based on serial number:
 - Serial number entered → System queries `serial_effectivity` table
 - Configuration (Short Nose, Long Nose, Enhanced, PLUS) is resolved from IETP effectivity codes
-- Displayed as read-only on Dashboard (mechanic cannot manually select)
+- Real-time resolution: DiagnosticForm performs debounced API lookup (500ms) as mechanic types serial number
+- Displayed as read-only badge on Dashboard with IETP effectivity code (mechanic cannot manually select)
 - If serial not found, warning is displayed and part applicability filtering is disabled
 - All diagnostic results, procedures, and parts are filtered by resolved configuration
 - Configuration data is logged with each query for traceability (serial, config code, source document)
 
+**IETP Applicability Codes (Table 2 - Authoritative Source)**:
+- **1J = SN (Short Nose)**: S/N 31005-31200, 41001-41200
+- **1L = LN (Long Nose)**: S/N 31201-31399, 41201-41299
+- **A1 = ENH (Enhanced)**: S/N 31400-31699, 41300-41499, 60001-60999
+- **A8 = PLUS**: S/N 31700 and subsequent, 41501 and subsequent, 61001-61999
+- **All**: All four configurations (31005+, 41001+, 60001+, 61001+)
+
+Note: S/N 41500 is not assigned to any configuration per the IETP (gap between ENH 41499 and PLUS 41501).
+
+**Database Implementation of "and subsequent" ranges**:
+The IETP uses four production series (31xxx, 41xxx, 60xxx, 61xxx). The "and subsequent" upper bounds in the database are capped at series boundaries to prevent overlap:
+- PLUS 31xxx series: 31700-40999 (capped before 41xxx series)
+- PLUS 41xxx series: 41501-59999 (capped before 60xxx series)
+- ENH 60xxx series: 60001-60999 (bounded per IETP)
+- PLUS 61xxx series: 61001-61999 (bounded per IETP)
+If new production series are introduced, the serial_effectivity table must be updated.
+
 **Database Tables for Effectivity**:
 - `aircraft_configurations`: Master list of configuration codes (SN, LN, ENH, PLUS)
-- `serial_effectivity`: Maps serial number ranges to configurations with IETP source reference
+- `serial_effectivity`: Maps serial number ranges to configurations with IETP applicability codes (1J, 1L, A1, A8)
 - `part_effectivity`: Maps part numbers to applicable configurations for IPD filtering
 
 **Quota System**:

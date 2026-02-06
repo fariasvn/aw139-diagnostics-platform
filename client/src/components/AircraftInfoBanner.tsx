@@ -7,6 +7,7 @@ interface AircraftInfoBannerProps {
   serialNumber?: string;
   configurationCode?: string | null;
   configurationName?: string | null;
+  effectivityCode?: string | null;
   lastMaintenance?: string;
   activeQueries?: number;
 }
@@ -16,6 +17,7 @@ export default function AircraftInfoBanner({
   serialNumber,
   configurationCode,
   configurationName,
+  effectivityCode,
   lastMaintenance = "2024-11-20",
   activeQueries = 0
 }: AircraftInfoBannerProps) {
@@ -32,7 +34,7 @@ export default function AircraftInfoBanner({
                 <h2 className="text-2xl font-semibold font-mono" data-testid="text-aircraft-model">{model}</h2>
                 {configurationCode && (
                   <Badge variant="default" className="font-mono font-bold text-sm" data-testid="badge-banner-config">
-                    {configurationCode}
+                    {configurationCode}{effectivityCode ? ` (${effectivityCode})` : ""}
                   </Badge>
                 )}
               </div>
