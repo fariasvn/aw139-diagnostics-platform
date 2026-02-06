@@ -149,8 +149,10 @@ export default function ExpertBookingCard({ experts, reason }: ExpertBookingCard
                         {expert.specialty}
                       </Badge>
                       <Badge 
-                        variant={available ? "default" : "outline"}
-                        className="text-xs"
+                        variant="outline"
+                        className={`text-xs ${available 
+                          ? "border-green-600 bg-green-500/15 text-green-700 dark:text-green-400 dark:border-green-500 dark:bg-green-500/20" 
+                          : "border-red-600 bg-red-500/15 text-red-700 dark:text-red-400 dark:border-red-500 dark:bg-red-500/20"}`}
                       >
                         {available ? (
                           <><CheckCircle className="w-3 h-3 mr-1" /> Available</>

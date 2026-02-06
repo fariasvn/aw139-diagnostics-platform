@@ -327,7 +327,12 @@ export default function AdminExperts() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-lg">{expert.name}</h3>
-                        <Badge variant={expert.available === 1 ? "default" : "secondary"}>
+                        <Badge 
+                          variant="outline"
+                          className={expert.available === 1 
+                            ? "border-green-600 bg-green-500/15 text-green-700 dark:text-green-400 dark:border-green-500 dark:bg-green-500/20" 
+                            : "border-red-600 bg-red-500/15 text-red-700 dark:text-red-400 dark:border-red-500 dark:bg-red-500/20"}
+                        >
                           {expert.available === 1 ? (
                             <><CheckCircle className="w-3 h-3 mr-1" /> Available</>
                           ) : (
