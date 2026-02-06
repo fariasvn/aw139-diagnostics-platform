@@ -88,27 +88,54 @@ export default async function runApp(
 
   const port = parseInt(process.env.PORT || "5000", 10);
 
+  // Graceful shutdown - release port quickly when PM2 sends SIGTERM
+  const gracefulShutdown = (signal: string) => {
+    log(`${signal} received, shutting down gracefully...`);
+    server.close(() => {
+      log("Server closed, exiting.");
+      process.exit(0);
+    });
+    // Force exit after 5 seconds if graceful shutdown hangs
+    setTimeout(() => {
+      log("Forced exit after timeout.");
+      process.exit(1);
+    }, 5000);
+  };
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+  // Retry logic for port conflicts
+  let retryCount = 0;
+  const maxRetries = 5;
+
+  const startListening = () => {
+    server.listen(
+      {
+        port,
+        host: "0.0.0.0",
+        reusePort: true,
+      },
+      () => {
+        log(`serving on port ${port}`);
+      },
+    );
+  };
+
   server.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      log(`Port ${port} in use, retrying in 5s...`);
+    if (err.code === "EADDRINUSE" && retryCount < maxRetries) {
+      retryCount++;
+      log(`Port ${port} in use, retry ${retryCount}/${maxRetries} in 5s...`);
       setTimeout(() => {
-        server.close();
-        server.listen({ port, host: "0.0.0.0", reusePort: true });
+        startListening();
       }, 5000);
+    } else if (err.code === "EADDRINUSE") {
+      log(`Port ${port} still in use after ${maxRetries} retries. Exiting.`);
+      process.exit(1);
     } else {
       throw err;
     }
   });
 
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  startListening();
 }
 
