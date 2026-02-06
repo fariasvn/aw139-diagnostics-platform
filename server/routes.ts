@@ -1,5 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import express from "express";
+import path from "path";
+import fs from "fs";
+import multer from "multer";
 import { storage } from "./storage";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -13,8 +17,37 @@ import { eq, desc, sql, like, ilike, and } from "drizzle-orm";
 import { setupAuth, isAuthenticated, isAuthEnabled, getAuthError } from "./replitAuth";
 import { resolveConfiguration, getApplicableParts, getAllConfigurations, getSerialEffectivityRanges } from "./configuration-resolver";
 
+const uploadsDir = path.resolve(process.cwd(), "uploads", "experts");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const expertPhotoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  },
+});
+
+const uploadExpertPhoto = multer({
+  storage: expertPhotoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowedExt = /\.(jpg|jpeg|png|webp)$/i;
+    const allowedMime = ["image/jpeg", "image/png", "image/webp"];
+    if (allowedExt.test(path.extname(file.originalname)) && allowedMime.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPG, PNG, and WebP images are allowed"));
+    }
+  },
+});
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  app.use("/uploads/experts", express.static(uploadsDir));
+
   // ============================================================
   // HEALTH CHECK ENDPOINT - BEFORE ANY AUTH MIDDLEWARE
   // This allows Docker/Portainer to monitor the process status
@@ -1184,6 +1217,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching expert:", error);
       res.status(500).json({ error: "Failed to fetch expert" });
     }
+  });
+
+  // POST /api/admin/experts/upload-photo - Upload expert profile photo
+  app.post("/api/admin/experts/upload-photo", isAuthenticated, (req: any, res, next) => {
+    uploadExpertPhoto.single("photo")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ error: "File too large. Maximum size is 5MB." });
+        }
+        return res.status(400).json({ error: err.message || "Invalid file" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: "No photo file provided" });
+      }
+      const imageUrl = `/uploads/experts/${req.file.filename}`;
+      res.json({ imageUrl });
+    });
   });
 
   // POST /api/admin/experts - Create new expert

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, UserCog, Phone, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Edit, Trash2, UserCog, Phone, CheckCircle, XCircle, Upload, Camera } from "lucide-react";
 
 interface Expert {
   id: string;
@@ -60,6 +60,8 @@ export default function AdminExperts() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null);
   const [formData, setFormData] = useState<ExpertFormData>(defaultFormData);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: experts = [], isLoading } = useQuery<Expert[]>({
     queryKey: ["/api/admin/experts"],
@@ -123,6 +125,29 @@ export default function AdminExperts() {
     },
   });
 
+  const handlePhotoUpload = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("photo", file);
+      const response = await fetch("/api/admin/experts/upload-photo", {
+        method: "POST",
+        body: formDataUpload,
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Upload failed");
+      }
+      const result = await response.json();
+      setFormData(prev => ({ ...prev, imageUrl: result.imageUrl }));
+      toast({ title: "Photo uploaded successfully" });
+    } catch (error: any) {
+      toast({ title: "Failed to upload photo", description: error.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleEdit = (expert: Expert) => {
     setEditingExpert(expert);
     setFormData({
@@ -153,6 +178,7 @@ export default function AdminExperts() {
     setIsCreateOpen(false);
     setEditingExpert(null);
     setFormData(defaultFormData);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const ExpertForm = () => (
@@ -226,27 +252,64 @@ export default function AdminExperts() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="whatsappNumber">WhatsApp Number</Label>
-          <Input
-            id="whatsappNumber"
-            value={formData.whatsappNumber}
-            onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
-            placeholder="+1234567890"
-            data-testid="input-expert-whatsapp"
-          />
+      <div className="space-y-2">
+        <Label htmlFor="whatsappNumber">WhatsApp Number</Label>
+        <Input
+          id="whatsappNumber"
+          value={formData.whatsappNumber}
+          onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
+          placeholder="+1234567890"
+          data-testid="input-expert-whatsapp"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Profile Photo</Label>
+        <div className="flex items-center gap-4">
+          <Avatar className="w-20 h-20 border-2 border-dashed border-muted-foreground/30">
+            <AvatarImage src={formData.imageUrl || undefined} alt="Preview" />
+            <AvatarFallback className="bg-muted">
+              <Camera className="w-8 h-8 text-muted-foreground" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              data-testid="input-expert-photo-file"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handlePhotoUpload(file);
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              data-testid="button-upload-photo"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              {isUploading ? "Uploading..." : "Upload Photo"}
+            </Button>
+            {formData.imageUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setFormData({ ...formData, imageUrl: "" })}
+                data-testid="button-remove-photo"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Remove
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="imageUrl">Profile Image URL</Label>
-          <Input
-            id="imageUrl"
-            value={formData.imageUrl}
-            onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-            placeholder="https://..."
-            data-testid="input-expert-image"
-          />
-        </div>
+        <p className="text-xs text-muted-foreground">JPG, PNG or WebP. Max 5MB.</p>
       </div>
 
       <div className="flex items-center gap-3">
