@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 interface Expert {
   id?: string;
   name: string;
+  role?: string | null;
   experience: string;
   specialty: string;
   specialties?: string | null;
@@ -143,7 +144,9 @@ export default function ExpertBookingCard({ experts, reason }: ExpertBookingCard
                   
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-semibold">{expert.name}</h4>
-                    <p className="text-xs text-muted-foreground">{expert.experience}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {expert.role ? `${expert.role} - ` : ""}{expert.experience}
+                    </p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <Badge variant="secondary" className="text-xs">
                         {expert.specialty}
