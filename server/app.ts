@@ -88,6 +88,18 @@ export default async function runApp(
 
   const port = parseInt(process.env.PORT || "5000", 10);
 
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      log(`Port ${port} in use, retrying in 5s...`);
+      setTimeout(() => {
+        server.close();
+        server.listen({ port, host: "0.0.0.0", reusePort: true });
+      }, 5000);
+    } else {
+      throw err;
+    }
+  });
+
   server.listen(
     {
       port,
