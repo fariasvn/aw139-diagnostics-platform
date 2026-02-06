@@ -228,26 +228,20 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user?.expires_at) {
+  if (!req.isAuthenticated() || !user?.claims?.sub) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
+  if (user.expires_at && now > user.expires_at && user.refresh_token) {
+    try {
+      const config = await getOidcConfig();
+      const tokenResponse = await client.refreshTokenGrant(config, user.refresh_token);
+      updateUserSession(user, tokenResponse);
+    } catch (error) {
+      console.warn("[AUTH] Token refresh failed, continuing with existing session");
+    }
   }
 
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
-    return next();
-  } catch (error) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+  return next();
 };
