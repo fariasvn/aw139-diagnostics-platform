@@ -7,7 +7,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { insertDiagnosticQuerySchema, solutionSubmissionSchema, insertExpertSchema, DEMO_TENANT_ID } from "@shared/schema";
+import { insertDiagnosticQuerySchema, solutionSubmissionSchema, insertExpertSchema, insertMaintenanceLogSchema, maintenanceLogs, DEMO_TENANT_ID } from "@shared/schema";
 import { analyzeDiagnosticQuery } from "./diagnostic-engine";
 import { analyzeATASystem } from "./ata-analytics";
 import { analyzeSmartStock } from "./smart-stock";
@@ -1514,6 +1514,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching experts:", error);
       res.status(500).json({ error: "Failed to fetch experts" });
+    }
+  });
+
+  // ============================================================
+  // MAINTENANCE LOG ENDPOINTS
+  // ============================================================
+
+  // POST /api/maintenance/log - Register a maintenance task
+  app.post("/api/maintenance/log", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub || "system";
+
+      const validated = insertMaintenanceLogSchema.parse({
+        aircraftSerial: req.body.aircraftSerial || "N/A",
+        ata: req.body.ata,
+        type: req.body.maintenanceType,
+        description: req.body.description,
+        tsn: req.body.tsn || 0,
+        date: new Date(req.body.date || Date.now()),
+      });
+
+      const [log] = await db.insert(maintenanceLogs).values({
+        ...validated,
+        userId,
+      }).returning();
+
+      res.status(201).json(log);
+    } catch (error: any) {
+      console.error("Error creating maintenance log:", error);
+      res.status(400).json({ error: "Failed to create maintenance log", details: error.message });
+    }
+  });
+
+  // GET /api/maintenance/logs - Get all maintenance logs
+  app.get("/api/maintenance/logs", isAuthenticated, async (req: any, res) => {
+    try {
+      const logs = await db.select().from(maintenanceLogs)
+        .orderBy(desc(maintenanceLogs.date));
+      res.json(logs);
+    } catch (error: any) {
+      console.error("Error fetching maintenance logs:", error);
+      res.status(500).json({ error: "Failed to fetch maintenance logs" });
+    }
+  });
+
+  // GET /api/maintenance/related/:ata - Get maintenance logs related to an ATA code
+  app.get("/api/maintenance/related/:ata", isAuthenticated, async (req: any, res) => {
+    try {
+      const { ata } = req.params;
+      const relatedLogs = await db.select().from(maintenanceLogs)
+        .where(eq(maintenanceLogs.ata, ata))
+        .orderBy(desc(maintenanceLogs.date));
+      res.json(relatedLogs);
+    } catch (error: any) {
+      console.error("Error fetching related maintenance:", error);
+      res.status(500).json({ error: "Failed to fetch related maintenance logs" });
     }
   });
 

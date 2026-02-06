@@ -23,9 +23,10 @@ interface DiagnosticFormProps {
   onSubmit: (data: any) => void;
   isLoading?: boolean;
   onConfigurationResolved?: (config: ConfigurationResolution | null) => void;
+  onAtaChange?: (ata: string) => void;
 }
 
-export default function DiagnosticForm({ onSubmit, isLoading = false, onConfigurationResolved }: DiagnosticFormProps) {
+export default function DiagnosticForm({ onSubmit, isLoading = false, onConfigurationResolved, onAtaChange }: DiagnosticFormProps) {
   const [formData, setFormData] = useState({
     aircraftModel: "AW139",
     serialNumber: "",
@@ -156,7 +157,10 @@ export default function DiagnosticForm({ onSubmit, isLoading = false, onConfigur
             <Label htmlFor="ata-code">ATA Code / Training Material</Label>
             <Select 
               value={formData.ata} 
-              onValueChange={(value) => setFormData({ ...formData, ata: value })}
+              onValueChange={(value) => {
+                setFormData({ ...formData, ata: value });
+                onAtaChange?.(value);
+              }}
             >
               <SelectTrigger id="ata-code" data-testid="select-ata-code">
                 <SelectValue placeholder="Select ATA system or training material" />

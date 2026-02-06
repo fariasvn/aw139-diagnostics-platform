@@ -14,6 +14,7 @@ import ExpertBookingCard from "@/components/ExpertBookingCard";
 import DMCToolSelector from "@/components/DMCToolSelector";
 import HistoricalMatchesAlert from "@/components/HistoricalMatchesAlert";
 import MechanicLogCard from "@/components/MechanicLogCard";
+import MaintenanceAlert from "@/components/MaintenanceAlert";
 import { DisclaimerNotice, DiagnosticDisclaimerFooter } from "@/components/DisclaimerModal";
 import expertImage1 from '@assets/generated_images/expert_aerospace_engineer_headshot.png';
 import expertImage2 from '@assets/generated_images/female_aviation_specialist_headshot.png';
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const [currentQuery, setCurrentQuery] = useState<any>(null);
   const [isRestored, setIsRestored] = useState(false);
   const [liveConfig, setLiveConfig] = useState<any>(null);
+  const [selectedAta, setSelectedAta] = useState<string>("");
   const { toast } = useToast();
 
   // Restore state from localStorage on mount
@@ -251,6 +253,7 @@ export default function Dashboard() {
     setHistoricalMatches([]);
     setCurrentQuery(null);
     setLiveConfig(null);
+    setSelectedAta("");
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY + "_troubleshootingId");
     localStorage.removeItem(STORAGE_KEY + "_unavailabilityId");
@@ -376,7 +379,10 @@ export default function Dashboard() {
       <DisclaimerNotice />
 
       {!diagnosticResult ? (
-        <DiagnosticForm onSubmit={handleDiagnosticSubmit} isLoading={diagnosticMutation.isPending} onConfigurationResolved={setLiveConfig} />
+        <>
+          <DiagnosticForm onSubmit={handleDiagnosticSubmit} isLoading={diagnosticMutation.isPending} onConfigurationResolved={setLiveConfig} onAtaChange={setSelectedAta} />
+          {selectedAta && <MaintenanceAlert ata={selectedAta} />}
+        </>
       ) : (
         <div className="space-y-6">
           <CertaintyScoreDisplay 
