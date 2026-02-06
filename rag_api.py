@@ -804,8 +804,29 @@ async def query_rag(request: QueryRequest):
 # MAIN ENTRY POINT
 # ======================================================================
 
+def wait_for_port(port, max_retries=5, delay=3):
+    """Wait for port to become available with retries."""
+    import socket
+    for attempt in range(max_retries):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("0.0.0.0", port))
+            sock.close()
+            return True
+        except OSError:
+            sock.close()
+            if attempt < max_retries - 1:
+                print(f"[RAG] Port {port} in use, waiting {delay}s (attempt {attempt+1}/{max_retries})...")
+                time.sleep(delay)
+    return False
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("RAG_API_PORT", "8000"))
+    
+    if not wait_for_port(port):
+        print(f"[RAG] ERROR: Port {port} still in use after retries. Exiting.")
+        exit(1)
+    
     print(f"Starting AW139 RAG API on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
