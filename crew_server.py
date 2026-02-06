@@ -437,7 +437,7 @@ def calculate_certainty_score(
     has_awdp: bool = False
 ) -> Dict[str, Any]:
     """
-    RIGOROUS CERTAINTY SCORE ENGINE v3.0 - Safety-Critical Calibration
+    RIGOROUS CERTAINTY SCORE ENGINE v3.2 - Deep System Analysis Support
     
     Philosophy: The score must reflect whether the diagnosis ACTUALLY addresses
     the problem with SPECIFIC information from the IETP/AMP/AWDP documentation.
@@ -467,7 +467,7 @@ def calculate_certainty_score(
                                        "adjustment", "rigging_procedure", "bonding_check", "detailed_inspection",
                                        "system_description"]
     
-    print(f"[CrewAI] === CERTAINTY SCORE v3.1 - RIGOROUS CALCULATION ===")
+    print(f"[CrewAI] === CERTAINTY SCORE v3.2 - DEEP SYSTEM ANALYSIS SUPPORT ===")
     print(f"[CrewAI] Query: {query[:80]}...")
     print(f"[CrewAI] ATA Filter: {ata_filter}")
     print(f"[CrewAI] Task Type: {task_type} ({'PROCEDURE' if is_procedure_type else 'FAULT_ISOLATION' if is_fault_type else 'OTHER'})")
@@ -602,6 +602,35 @@ def calculate_certainty_score(
         diagnosis_lower
     ))
     
+    # --- DEEP SYSTEM ANALYSIS DETECTION (signal path, probability ranking) ---
+    has_probability_ranking = bool(re.search(
+        r'\b\d{1,3}\s*%\s*(?:probability|likely|likelihood|chance)',
+        diagnosis_lower
+    )) or bool(re.search(
+        r'(?:most\s*likely|most\s*probable|primary\s*suspect|first\s*suspect)',
+        diagnosis_lower
+    )) or len(re.findall(r'\b\d{1,3}\s*%', diagnosis)) >= 2
+    
+    has_signal_path_analysis = bool(re.search(
+        r'\b(?:signal\s*(?:path|flow|chain)|circuit\s*(?:path|trace|analysis)|'
+        r'in\s*series\s*with|in\s*parallel\s*with|'
+        r'from\s*(?:the\s*)?(?:switch|sensor|relay)\s*(?:to|through)|'
+        r'power\s*(?:flows?|supply|path)|ground\s*(?:path|return|circuit)|'
+        r'pin\s*\d+|connector\s*[A-Z]?\d+|wire\s*(?:number|#|\d)|'
+        r'functional\s*chain|component\s*(?:path|chain|in\s*the\s*circuit))\b',
+        diagnosis_lower
+    ))
+    
+    has_system_operation_analysis = bool(re.search(
+        r'\b(?:(?:the\s*)?system\s*(?:works|operates|functions)\s*by|'
+        r'when\s*(?:the\s*)?(?:gear|switch|valve|relay|sensor)\s*(?:is|moves|activates)|'
+        r'(?:this|the)\s*(?:sends?|provides?|generates?)\s*(?:a\s*)?signal|'
+        r'the\s*(?:indicator|light|annunciator)\s*(?:illuminates?|shows?|displays?)\s*(?:when|because)|'
+        r'under\s*normal\s*(?:operation|conditions)|'
+        r'the\s*circuit\s*(?:is\s*)?(?:completed?|opened?|broken)\s*(?:when|by|through))\b',
+        diagnosis_lower
+    ))
+    
     # --- PROCEDURE-SPECIFIC ANALYSIS (install, remove, adjust, rig, etc.) ---
     has_procedure_steps = bool(re.search(
         r'\b(?:step\s*\d|procedure|install|remove|disconnect|connect|'
@@ -664,31 +693,49 @@ def calculate_certainty_score(
     else:
         analysis_points = 0
         if has_specific_component:
-            analysis_points += 25
+            analysis_points += 20
             analysis_details.append("Specific component identified")
         if has_causal_reasoning:
-            analysis_points += 25
+            analysis_points += 20
             analysis_details.append("Causal reasoning present")
         if has_mechanism_explanation:
-            analysis_points += 20
+            analysis_points += 15
             analysis_details.append("Mechanism/system explained")
         if has_specific_location:
-            analysis_points += 15
+            analysis_points += 10
             analysis_details.append("Specific location referenced")
         if has_failure_mode:
-            analysis_points += 15
+            analysis_points += 10
             analysis_details.append("Failure mode identified")
+        
+        # DEEP SYSTEM ANALYSIS BONUSES
+        if has_probability_ranking:
+            analysis_points += 10
+            analysis_details.append("DEEP: Probability ranking of causes present")
+        if has_signal_path_analysis:
+            analysis_points += 10
+            analysis_details.append("DEEP: Signal/circuit path analysis present")
+        if has_system_operation_analysis:
+            analysis_points += 10
+            analysis_details.append("DEEP: System operation analysis present")
         
         system_analysis_score = min(analysis_points, 100)
         
-        if not has_specific_component and not has_mechanism_explanation:
-            system_analysis_score = min(system_analysis_score, 30)
-            analysis_details.append("WARNING: No specific component or mechanism analysis")
+        # Deep system analysis with probability ranking can substitute for missing causal reasoning
+        has_deep_analysis = (has_probability_ranking and has_signal_path_analysis) or \
+                           (has_system_operation_analysis and has_probability_ranking) or \
+                           (has_signal_path_analysis and has_mechanism_explanation)
         
-        if not has_causal_reasoning:
+        if not has_specific_component and not has_mechanism_explanation and not has_deep_analysis:
+            system_analysis_score = min(system_analysis_score, 30)
+            analysis_details.append("WARNING: No specific component, mechanism, or deep system analysis")
+        
+        if not has_causal_reasoning and not has_deep_analysis:
             system_analysis_score = min(system_analysis_score, 50)
-            analysis_details.append("WARNING: No causal reasoning (why the problem occurs)")
+            analysis_details.append("WARNING: No causal reasoning or deep system analysis")
     
+    if not is_procedure_type:
+        print(f"[CrewAI] Deep Analysis Flags: probability_ranking={has_probability_ranking}, signal_path={has_signal_path_analysis}, system_operation={has_system_operation_analysis}")
     print(f"[CrewAI] System Analysis Score: {system_analysis_score}% - {analysis_details}")
     
     # =========================================================================
@@ -956,7 +1003,7 @@ def calculate_certainty_score(
         (diagram_score * 0.10)
     )
     
-    print(f"[CrewAI] === SCORE BREAKDOWN v3.1 (Type: {'PROCEDURE' if is_procedure_type else 'FAULT_ISOLATION'}) ===")
+    print(f"[CrewAI] === SCORE BREAKDOWN v3.2 (Type: {'PROCEDURE' if is_procedure_type else 'FAULT_ISOLATION'}) ===")
     print(f"[CrewAI] Coverage:         {coverage_score:3}% x 0.25 = {coverage_score * 0.25:.1f}")
     print(f"[CrewAI] System Analysis:  {system_analysis_score:3}% x 0.25 = {system_analysis_score * 0.25:.1f}")
     print(f"[CrewAI] Evidence:         {evidence_score:3}% x 0.20 = {evidence_score * 0.20:.1f}")
@@ -968,6 +1015,11 @@ def calculate_certainty_score(
     # HARD CAPS - Different rules for FAULT ISOLATION vs PROCEDURES
     # =========================================================================
     caps_applied = []
+    
+    # Pre-compute deep analysis flag for use in hard caps AND 95% threshold
+    has_deep_analysis = (has_probability_ranking and has_signal_path_analysis) or \
+                       (has_system_operation_analysis and has_probability_ranking) or \
+                       (has_signal_path_analysis and has_mechanism_explanation)
     
     if is_procedure_type:
         # --- PROCEDURE HARD CAPS ---
@@ -985,32 +1037,34 @@ def calculate_certainty_score(
                 caps_applied.append("CAP 82%: Procedure without steps or component identification")
     else:
         # --- FAULT ISOLATION HARD CAPS ---
-        if is_fault_type and not has_awdp and not has_awdp_ref:
+        # Deep system analysis (probability ranking + signal path + system operation) can relax some caps
+        
+        if is_fault_type and not has_awdp and not has_awdp_ref and not has_deep_analysis:
             if final_score > 85:
                 final_score = 85
-                caps_applied.append("CAP 85%: Fault isolation without AWDP/wiring analysis")
+                caps_applied.append("CAP 85%: Fault isolation without AWDP/wiring analysis or deep system analysis")
         
-        if is_generic_diagnosis:
+        if is_generic_diagnosis and not has_deep_analysis:
             if final_score > 80:
                 final_score = 80
                 caps_applied.append("CAP 80%: Generic diagnosis without specific component analysis")
         
-        if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
+        if not has_amp_ref and not has_real_dmc and not has_awdp_ref and not has_deep_analysis:
             if final_score > 85:
                 final_score = 85
-                caps_applied.append("CAP 85%: No specific manual references (DMC/AMP/AWDP)")
+                caps_applied.append("CAP 85%: No specific manual references (DMC/AMP/AWDP) and no deep system analysis")
         
         if not has_specific_component and not has_real_part_number:
             if final_score > 82:
                 final_score = 82
                 caps_applied.append("CAP 82%: No specific component or part number identified")
         
-        if not has_causal_reasoning and is_fault_type:
+        if not has_causal_reasoning and not has_deep_analysis and is_fault_type:
             if final_score > 80:
                 final_score = 80
-                caps_applied.append("CAP 80%: Fault isolation without causal reasoning")
+                caps_applied.append("CAP 80%: Fault isolation without causal reasoning or deep system analysis")
         
-        if missing_subsystem_analysis:
+        if missing_subsystem_analysis and not has_deep_analysis:
             if final_score > 75:
                 final_score = 75
                 caps_applied.append(f"CAP 75%: Diagnosis does not analyze required subsystem: {', '.join(missing_subsystem_analysis)}")
@@ -1035,8 +1089,10 @@ def calculate_certainty_score(
             alignment_score >= 50
         )
     else:
-        # FAULT ISOLATION 95% CRITERIA (strict):
-        can_exceed_95 = (
+        # FAULT ISOLATION 95% CRITERIA:
+        # Path A: Traditional strict criteria (AWDP + causal reasoning + manual refs)
+        # Path B: Deep system analysis (probability ranking + signal path + system understanding)
+        traditional_criteria = (
             system_analysis_score >= 75 and
             coverage_score >= 85 and
             evidence_count >= 5 and
@@ -1047,6 +1103,16 @@ def calculate_certainty_score(
             (not is_fault_type or has_awdp or has_awdp_ref) and
             (has_amp_ref or has_real_dmc or has_awdp_ref)
         )
+        deep_analysis_criteria = (
+            system_analysis_score >= 70 and
+            coverage_score >= 65 and
+            evidence_count >= 3 and
+            alignment_score >= 60 and
+            has_specific_component and
+            has_deep_analysis and
+            has_probability_ranking
+        )
+        can_exceed_95 = traditional_criteria or deep_analysis_criteria
     
     if final_score >= 95 and not can_exceed_95:
         final_score = 94
@@ -1096,7 +1162,9 @@ def calculate_certainty_score(
         "score": final_score,
         "breakdown": {
             "coverage": {"score": coverage_score, "weight": 0.25, "details": coverage_details},
-            "system_analysis": {"score": system_analysis_score, "weight": 0.25, "details": analysis_details},
+            "system_analysis": {"score": system_analysis_score, "weight": 0.25, "details": analysis_details,
+                               "deep_analysis": has_deep_analysis, "probability_ranking": has_probability_ranking,
+                               "signal_path": has_signal_path_analysis, "system_operation": has_system_operation_analysis},
             "evidence": {"score": evidence_score, "weight": 0.20, "count": evidence_count, "details": evidence_details},
             "query_alignment": {"score": alignment_score, "weight": 0.20, "details": alignment_details},
             "diagram_analysis": {"score": diagram_score, "weight": 0.10, "details": diagram_details}
@@ -1200,14 +1268,38 @@ def get_task_type_instructions(task_type: str) -> str:
     """Return specific instructions based on task type."""
     instructions = {
         "fault_isolation": """
-TASK TYPE: FAULT ISOLATION
-You must:
-- Interpret the system operation from the AMP
+TASK TYPE: FAULT ISOLATION - DEEP SYSTEM ANALYSIS REQUIRED
+
+CRITICAL INSTRUCTION: If the exact problem described by the mechanic is NOT explicitly documented as a procedure in the manual, you MUST perform DEEP SYSTEM ANALYSIS:
+
+STEP 1 - SYSTEM UNDERSTANDING:
+- Analyze the AWDP wiring diagrams/schematics for the affected system
+- Understand HOW the system operates: what signals flow where, what components are in the circuit
+- Identify every component in the signal path (switches, relays, connectors, wiring, sensors, indicators)
+- Map the complete functional chain from input to output
+
+STEP 2 - CAUSAL ANALYSIS:
+- Based on your understanding of HOW the system works, determine WHAT could cause the reported symptom
+- For each component in the signal path, explain HOW its failure would produce the observed symptom
+- Example: "The landing gear position switch (S/N XXXX) is in series with the indicator light. If this switch has intermittent contact, it would cause the green/amber flickering described"
+
+STEP 3 - PROBABILITY RANKING:
+- Rank all probable causes by likelihood (percentage)
+- Explain WHY each cause has its ranking based on:
+  a) Position in the circuit (components closest to the symptom are most likely)
+  b) Common failure modes for that component type
+  c) Environmental factors (vibration, moisture, wear patterns)
+  d) Historical reliability data if available
+- Format: "1. Component X - 35% probability: Because [technical reasoning based on system analysis]"
+
+STEP 4 - MANDATORY OUTPUTS:
+- Interpret the system operation from the AMP/IETP
 - Determine conditions that trigger the CAS message or anomaly
 - Trace the logic of involved components using AWDP wiring diagrams
-- MANDATORY: Search for and analyze AWDP schematic/wiring diagram for the affected system
 - Identify relevant connectors, pin numbers, and wire routing from AWDP
-- Provide: Recommended Tests, Likely Causes (with probability %), Affected Parts
+- Provide: Recommended Tests (ordered by probability), Likely Causes (with probability %), Affected Parts
+
+PHILOSOPHY: Even when the exact fault is not written in the manual, if you understand how the system works, you can deduce what could cause the problem. A good mechanic does this naturally - the AI must do the same by analyzing the system documentation.
 """,
         "functional_test": """
 TASK TYPE: FUNCTIONAL TEST
@@ -1217,6 +1309,7 @@ You must:
 - Reference test equipment required (from Table 3)
 - Include pass/fail criteria
 - Reference AWDP wiring data for any electrical connections being tested
+- If the exact test procedure is not in the manual, analyze the AWDP diagram to understand the system and propose a logical test sequence based on signal flow
 """,
         "operational_test": """
 TASK TYPE: OPERATIONAL TEST
@@ -1227,6 +1320,7 @@ You must:
 - Analyze the AWDP diagram to identify signal flow and component interactions
 - Include warning conditions to monitor
 - Reference connector pin-outs and wiring from AWDP
+- If the exact test is not documented, analyze the system architecture to propose verification steps based on component function
 """,
         "remove_procedure": """
 TASK TYPE: REMOVE PROCEDURE
@@ -1249,10 +1343,11 @@ You must:
         "system_description": """
 TASK TYPE: SYSTEM DESCRIPTION
 You must:
-- Explain how the system works technically
-- Describe component interactions
-- Include system logic flow
+- Explain how the system works technically based on AMP and AWDP documentation
+- Describe component interactions and signal flow
+- Include system logic flow from input to output
 - Reference system architecture from AMP
+- Identify all components in the functional chain
 - Do NOT provide troubleshooting steps
 """,
         "adjustment": """
@@ -1292,14 +1387,37 @@ def run_three_agent_diagnosis(request: DiagnoseRequest, start_time: float) -> Di
     config_name = request.configuration_name or ""
     config_context = f" [{config_code} - {config_name}]" if config_code else ""
     
+    is_fault_type = task_type in ["fault_isolation", "operational_test", "functional_test"]
+    
     print(f"[Agent-1] PRIMARY DIAGNOSTIC AGENT starting...")
     print(f"[Agent-1] Task Type: {task_label}")
     print(f"[Agent-1] Aircraft Config: {config_code or 'Unknown'} ({config_name or 'N/A'})")
     
+    # Get task-type specific instructions for the GPT prompt
+    task_instructions = get_task_type_instructions(task_type)
+    
     # AGENT 1: Primary Diagnostic Agent - Query RAG with task-type and configuration context
     try:
-        # Enhance query with task type AND configuration context for RAG
-        enhanced_query = f"[{task_label}]{config_context} {request.query}"
+        # Build enhanced query with DEEP SYSTEM ANALYSIS instructions for fault types
+        if is_fault_type:
+            enhanced_query = f"""[{task_label}]{config_context}
+
+INSTRUCTIONS FOR ANALYSIS:
+{task_instructions}
+
+MECHANIC'S PROBLEM DESCRIPTION:
+{request.query}
+
+IMPORTANT: If the exact problem is NOT found as a specific procedure in the manual, you MUST:
+1. Analyze the AWDP wiring diagram/schematic for this system to understand how it works
+2. Identify ALL components in the signal/functional path that could cause this symptom
+3. For each component, explain HOW its failure would produce the observed symptom
+4. Rank causes by probability with technical reasoning
+5. Reference specific connectors, pins, wire numbers from AWDP where available
+Do NOT simply say "consult the manual" - ANALYZE the system and provide your technical assessment."""
+        else:
+            enhanced_query = f"[{task_label}]{config_context} {request.query}"
+        
         rag_result = query_rag(enhanced_query, top_k=10, ata_code=request.ata_code)
     except Exception as e:
         print(f"[Agent-1] RAG query exception: {e}")
@@ -1310,6 +1428,33 @@ def run_three_agent_diagnosis(request: DiagnoseRequest, start_time: float) -> Di
             status_code=503,
             detail=f"RAG API not available: {rag_result['error']}"
         )
+    
+    # For fault isolation: perform a SECOND RAG query specifically for AWDP/wiring diagrams
+    awdp_rag_docs = []
+    if is_fault_type and request.ata_code:
+        try:
+            ata_num = request.ata_code.replace("ATA ", "").strip()[:2] if request.ata_code else ""
+            awdp_query = f"AWDP wiring diagram schematic electrical circuit ATA {ata_num} system operation components connectors pins signal path"
+            print(f"[Agent-1] AWDP deep search: {awdp_query[:60]}...")
+            awdp_result = query_rag(awdp_query, top_k=5, ata_code=request.ata_code)
+            awdp_rag_docs = awdp_result.get("documents") or awdp_result.get("chunks") or []
+            if awdp_rag_docs:
+                print(f"[Agent-1] AWDP search returned {len(awdp_rag_docs)} additional documents for system analysis")
+                # Merge AWDP docs into main RAG result (avoid duplicates)
+                existing_paths = set()
+                for doc in (rag_result.get("documents") or rag_result.get("chunks") or []):
+                    existing_paths.add(doc.get("doc_path", ""))
+                
+                for doc in awdp_rag_docs:
+                    if doc.get("doc_path", "") not in existing_paths:
+                        if "documents" in rag_result:
+                            rag_result["documents"].append(doc)
+                        elif "chunks" in rag_result:
+                            rag_result["chunks"].append(doc)
+                        existing_paths.add(doc.get("doc_path", ""))
+                        print(f"[Agent-1] Added AWDP doc: {doc.get('doc_path', 'unknown')[-50:]}")
+        except Exception as e:
+            print(f"[Agent-1] AWDP deep search failed (non-critical): {e}")
     
     # Format diagnosis with task-type specific instructions
     raw_diagnosis = format_diagnosis_text(rag_result, request.query)
