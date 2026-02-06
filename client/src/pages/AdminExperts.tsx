@@ -268,7 +268,7 @@ export default function AdminExperts() {
           <div className="flex items-center gap-3">
             <UserCog className="w-8 h-8 text-primary" />
             <div>
-              <h1 className="text-2xl font-bold">Expert Management</h1>
+              <h1 className="text-2xl font-bold">MCC Experts</h1>
               <p className="text-sm text-muted-foreground">Manage expert roster and availability</p>
             </div>
           </div>

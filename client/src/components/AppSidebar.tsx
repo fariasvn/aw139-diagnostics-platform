@@ -28,7 +28,7 @@ const menuItems = [
 ];
 
 const adminItems = [
-  { title: "Manage Experts", icon: UserCog, url: "/admin/experts" },
+  { title: "MCC Experts", icon: UserCog, url: "/admin/experts" },
   { title: "Manage Users", icon: Users, url: "/admin/users" },
 ];
 
