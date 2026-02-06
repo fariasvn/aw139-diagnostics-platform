@@ -461,10 +461,16 @@ def calculate_certainty_score(
     diagnosis_lower = diagnosis.lower()
     query_lower = query.lower() if query else ""
     
-    print(f"[CrewAI] === CERTAINTY SCORE v3.0 - RIGOROUS CALCULATION ===")
+    # Task type classification (used throughout scoring)
+    is_fault_type = task_type in ["fault_isolation", "operational_test", "functional_test"]
+    is_procedure_type = task_type in ["remove_procedure", "install_procedure", "disassembly", "assembly",
+                                       "adjustment", "rigging_procedure", "bonding_check", "detailed_inspection",
+                                       "system_description"]
+    
+    print(f"[CrewAI] === CERTAINTY SCORE v3.1 - RIGOROUS CALCULATION ===")
     print(f"[CrewAI] Query: {query[:80]}...")
     print(f"[CrewAI] ATA Filter: {ata_filter}")
-    print(f"[CrewAI] Task Type: {task_type}")
+    print(f"[CrewAI] Task Type: {task_type} ({'PROCEDURE' if is_procedure_type else 'FAULT_ISOLATION' if is_fault_type else 'OTHER'})")
     print(f"[CrewAI] AWDP Found: {has_awdp}")
     print(f"[CrewAI] Documents found: {doc_count}")
     
@@ -529,9 +535,25 @@ def calculate_certainty_score(
     print(f"[CrewAI] Coverage Score: {coverage_score}% - {coverage_details}")
     
     # =========================================================================
+    # PRE-DETECTION: Evidence flags needed by multiple scoring components
+    # Detected early so System Analysis can use them for procedure scoring
+    # =========================================================================
+    has_real_dmc = bool(re.search(
+        r'\b\d{2}-[A-Z]-\d{2}-\d{2}-\d{2}-\d{2}[A-Z]?',
+        diagnosis, re.IGNORECASE
+    ))
+    has_ietp_dmc_code = bool(re.search(
+        r'\b\d{2}-[A-Z]-\d{2}-\d{2}-\d{2}-\d{2}[A-Z]-\d{3}[A-Z]-[A-Z]\b',
+        diagnosis, re.IGNORECASE
+    ))
+    has_amp_ref = bool(re.search(r'\b(?:AMP|AMM)\s*[-:]?\s*\d{2}[-]\d{2}[-]\d{2}', diagnosis, re.IGNORECASE))
+    has_awdp_ref = bool(re.search(r'\b(?:AWD|AWDP)\s*[-:]?\s*\d{2}', diagnosis, re.IGNORECASE))
+    has_real_part_number = bool(re.search(r'\b(?:3G\d{4}[A-Z0-9-]+|\d{3}-\d{4}-\d{2}|P/N\s*[A-Z0-9-]{6,})\b', diagnosis, re.IGNORECASE))
+    
+    # =========================================================================
     # 2. SYSTEM ANALYSIS SCORE (0-100%) - Weight: 25%
-    # Does the diagnosis explain HOW the system works and WHY the problem occurs?
-    # NOT just generic keywords - must show causal reasoning
+    # For FAULT ISOLATION: HOW the system works and WHY the problem occurs
+    # For PROCEDURES: steps, tools, references, safety notes
     # =========================================================================
     system_analysis_score = 0
     analysis_details = []
@@ -580,32 +602,92 @@ def calculate_certainty_score(
         diagnosis_lower
     ))
     
-    analysis_points = 0
-    if has_specific_component:
-        analysis_points += 25
-        analysis_details.append("Specific component identified")
-    if has_causal_reasoning:
-        analysis_points += 25
-        analysis_details.append("Causal reasoning present")
-    if has_mechanism_explanation:
-        analysis_points += 20
-        analysis_details.append("Mechanism/system explained")
-    if has_specific_location:
-        analysis_points += 15
-        analysis_details.append("Specific location referenced")
-    if has_failure_mode:
-        analysis_points += 15
-        analysis_details.append("Failure mode identified")
+    # --- PROCEDURE-SPECIFIC ANALYSIS (install, remove, adjust, rig, etc.) ---
+    has_procedure_steps = bool(re.search(
+        r'\b(?:step\s*\d|procedure|install|remove|disconnect|connect|'
+        r'torque|tighten|loosen|secure|safety\s*wire|lock\s*wire|'
+        r'position|align|adjust|calibrate|set\s*to|rig|'
+        r'apply|lubricate|clean|inspect before|inspect after|'
+        r'ensure|verify|confirm|record|note)\b',
+        diagnosis_lower
+    ))
     
-    system_analysis_score = min(analysis_points, 100)
+    has_tool_reference = bool(re.search(
+        r'\b(?:torque\s*(?:wrench|value|to)|ft[\.\s-]*lb|in[\.\s-]*lb|N[\.\s]*m|'
+        r'tool\s*(?:number|p/n|#)|wrench|socket|driver|gauge|'
+        r'feeler\s*gauge|dial\s*indicator|micrometer|caliper|'
+        r'multimeter|megger|test\s*set|adapter|fixture|jig|'
+        r'special\s*tool|gse|ground\s*support)\b',
+        diagnosis_lower
+    ))
     
-    if not has_specific_component and not has_mechanism_explanation:
-        system_analysis_score = min(system_analysis_score, 30)
-        analysis_details.append("WARNING: No specific component or mechanism analysis")
+    has_safety_note = bool(re.search(
+        r'\b(?:caution|warning|note|danger|critical|'
+        r'do\s*not|never|ensure\s*that|before\s*(?:removing|installing|adjusting)|'
+        r'safety\s*(?:precaution|note|wire)|personal\s*protective|ppe|'
+        r'depressurize|de-energize|isolate|lockout)\b',
+        diagnosis_lower
+    ))
     
-    if not has_causal_reasoning:
-        system_analysis_score = min(system_analysis_score, 50)
-        analysis_details.append("WARNING: No causal reasoning (why the problem occurs)")
+    has_sequence_order = bool(re.search(
+        r'(?:first|then|next|after|before|finally|subsequently|'
+        r'step\s*[1-9]|(?:^|\n)\s*\d+[\.\)]\s)',
+        diagnosis_lower
+    ))
+    
+    if is_procedure_type:
+        analysis_points = 0
+        if has_specific_component:
+            analysis_points += 20
+            analysis_details.append("Specific component identified")
+        if has_procedure_steps:
+            analysis_points += 25
+            analysis_details.append("Procedure steps/instructions present")
+        if has_tool_reference:
+            analysis_points += 15
+            analysis_details.append("Tool/torque references present")
+        if has_safety_note:
+            analysis_points += 15
+            analysis_details.append("Safety notes/cautions present")
+        if has_sequence_order:
+            analysis_points += 10
+            analysis_details.append("Sequential order present")
+        if has_ietp_dmc_code or has_real_dmc:
+            analysis_points += 15
+            analysis_details.append("IETP/DMC document reference found")
+        
+        system_analysis_score = min(analysis_points, 100)
+        
+        if not has_procedure_steps and not has_real_dmc and not has_ietp_dmc_code:
+            system_analysis_score = min(system_analysis_score, 30)
+            analysis_details.append("WARNING: No procedure steps or IETP reference")
+    else:
+        analysis_points = 0
+        if has_specific_component:
+            analysis_points += 25
+            analysis_details.append("Specific component identified")
+        if has_causal_reasoning:
+            analysis_points += 25
+            analysis_details.append("Causal reasoning present")
+        if has_mechanism_explanation:
+            analysis_points += 20
+            analysis_details.append("Mechanism/system explained")
+        if has_specific_location:
+            analysis_points += 15
+            analysis_details.append("Specific location referenced")
+        if has_failure_mode:
+            analysis_points += 15
+            analysis_details.append("Failure mode identified")
+        
+        system_analysis_score = min(analysis_points, 100)
+        
+        if not has_specific_component and not has_mechanism_explanation:
+            system_analysis_score = min(system_analysis_score, 30)
+            analysis_details.append("WARNING: No specific component or mechanism analysis")
+        
+        if not has_causal_reasoning:
+            system_analysis_score = min(system_analysis_score, 50)
+            analysis_details.append("WARNING: No causal reasoning (why the problem occurs)")
     
     print(f"[CrewAI] System Analysis Score: {system_analysis_score}% - {analysis_details}")
     
@@ -635,25 +717,19 @@ def calculate_certainty_score(
             found_evidence[ev_type] = matches
             evidence_count += len(matches)
     
-    has_real_dmc = bool(re.search(
-        r'\b\d{2}-[A-Z]-\d{2}-\d{2}-\d{2}-\d{2}[A-Z]?',
-        diagnosis, re.IGNORECASE
-    ))
+    # Use pre-detected flags (computed before System Analysis)
     if has_real_dmc:
         evidence_count += 3
         found_evidence['dmc_code'] = True
-    
-    has_amp_ref = bool(re.search(r'\b(?:AMP|AMM)\s*[-:]?\s*\d{2}[-]\d{2}[-]\d{2}', diagnosis, re.IGNORECASE))
+    if has_ietp_dmc_code:
+        evidence_count += 2
+        found_evidence['ietp_dmc_code'] = True
     if has_amp_ref:
         evidence_count += 2
         found_evidence['amp_ref'] = True
-    
-    has_awdp_ref = bool(re.search(r'\b(?:AWD|AWDP)\s*[-:]?\s*\d{2}', diagnosis, re.IGNORECASE))
     if has_awdp_ref:
         evidence_count += 2
         found_evidence['awdp_ref'] = True
-    
-    has_real_part_number = bool(re.search(r'\b(?:3G\d{4}[A-Z0-9-]+|\d{3}-\d{4}-\d{2}|P/N\s*[A-Z0-9-]{6,})\b', diagnosis, re.IGNORECASE))
     if has_real_part_number:
         evidence_count += 2
         found_evidence['real_part_number'] = True
@@ -839,9 +915,6 @@ def calculate_certainty_score(
     diagram_score = 0
     diagram_details = []
     
-    is_fault_type = task_type in ["fault_isolation", "operational_test", "functional_test"]
-    is_procedure_type = task_type in ["remove_procedure", "install_procedure", "disassembly", "assembly"]
-    
     if is_fault_type:
         if has_awdp and has_awdp_ref:
             diagram_score = 100
@@ -883,7 +956,7 @@ def calculate_certainty_score(
         (diagram_score * 0.10)
     )
     
-    print(f"[CrewAI] === SCORE BREAKDOWN v3.0 ===")
+    print(f"[CrewAI] === SCORE BREAKDOWN v3.1 (Type: {'PROCEDURE' if is_procedure_type else 'FAULT_ISOLATION'}) ===")
     print(f"[CrewAI] Coverage:         {coverage_score:3}% x 0.25 = {coverage_score * 0.25:.1f}")
     print(f"[CrewAI] System Analysis:  {system_analysis_score:3}% x 0.25 = {system_analysis_score * 0.25:.1f}")
     print(f"[CrewAI] Evidence:         {evidence_score:3}% x 0.20 = {evidence_score * 0.20:.1f}")
@@ -892,83 +965,123 @@ def calculate_certainty_score(
     print(f"[CrewAI] Raw Total: {final_score:.1f}%")
     
     # =========================================================================
-    # HARD CAPS - Safety-critical rules that CANNOT be overridden
+    # HARD CAPS - Different rules for FAULT ISOLATION vs PROCEDURES
     # =========================================================================
     caps_applied = []
     
-    if is_fault_type and not has_awdp and not has_awdp_ref:
-        if final_score > 85:
-            final_score = 85
-            caps_applied.append("CAP 85%: Fault isolation without AWDP/wiring analysis")
-    
-    if is_generic_diagnosis:
-        if final_score > 80:
-            final_score = 80
-            caps_applied.append("CAP 80%: Generic diagnosis without specific component analysis")
-    
-    if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
-        if final_score > 85:
-            final_score = 85
-            caps_applied.append("CAP 85%: No specific manual references (DMC/AMP/AWDP)")
-    
-    if not has_specific_component and not has_real_part_number:
-        if final_score > 82:
-            final_score = 82
-            caps_applied.append("CAP 82%: No specific component or part number identified")
-    
-    if not has_causal_reasoning and is_fault_type:
-        if final_score > 80:
-            final_score = 80
-            caps_applied.append("CAP 80%: Fault isolation without causal reasoning")
-    
-    if missing_subsystem_analysis:
-        if final_score > 75:
-            final_score = 75
-            caps_applied.append(f"CAP 75%: Diagnosis does not analyze required subsystem: {', '.join(missing_subsystem_analysis)}")
-    
-    if diagnosis_suggests_electrical and query_implies_mechanical and not has_mechanism_explanation:
-        if final_score > 78:
-            final_score = 78
-            caps_applied.append("CAP 78%: Electrical checks for mechanical problem without mechanism analysis")
+    if is_procedure_type:
+        # --- PROCEDURE HARD CAPS ---
+        # Procedures are about finding the correct IETP reference and providing steps
+        # They do NOT require causal reasoning, failure modes, or AWDP analysis
+        
+        if not has_amp_ref and not has_real_dmc and not has_awdp_ref and not has_ietp_dmc_code:
+            if final_score > 88:
+                final_score = 88
+                caps_applied.append("CAP 88%: Procedure without specific IETP/DMC/AMP reference")
+        
+        if not has_procedure_steps and not has_specific_component:
+            if final_score > 82:
+                final_score = 82
+                caps_applied.append("CAP 82%: Procedure without steps or component identification")
+    else:
+        # --- FAULT ISOLATION HARD CAPS ---
+        if is_fault_type and not has_awdp and not has_awdp_ref:
+            if final_score > 85:
+                final_score = 85
+                caps_applied.append("CAP 85%: Fault isolation without AWDP/wiring analysis")
+        
+        if is_generic_diagnosis:
+            if final_score > 80:
+                final_score = 80
+                caps_applied.append("CAP 80%: Generic diagnosis without specific component analysis")
+        
+        if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
+            if final_score > 85:
+                final_score = 85
+                caps_applied.append("CAP 85%: No specific manual references (DMC/AMP/AWDP)")
+        
+        if not has_specific_component and not has_real_part_number:
+            if final_score > 82:
+                final_score = 82
+                caps_applied.append("CAP 82%: No specific component or part number identified")
+        
+        if not has_causal_reasoning and is_fault_type:
+            if final_score > 80:
+                final_score = 80
+                caps_applied.append("CAP 80%: Fault isolation without causal reasoning")
+        
+        if missing_subsystem_analysis:
+            if final_score > 75:
+                final_score = 75
+                caps_applied.append(f"CAP 75%: Diagnosis does not analyze required subsystem: {', '.join(missing_subsystem_analysis)}")
+        
+        if diagnosis_suggests_electrical and query_implies_mechanical and not has_mechanism_explanation:
+            if final_score > 78:
+                final_score = 78
+                caps_applied.append("CAP 78%: Electrical checks for mechanical problem without mechanism analysis")
     
     # =========================================================================
     # HARD RULE FOR 95%+ (SAFE_TO_PROCEED threshold)
-    # ALL of these must be true for score to reach 95%+
+    # Different criteria for procedures vs fault isolation
     # =========================================================================
-    can_exceed_95 = (
-        system_analysis_score >= 75 and
-        coverage_score >= 85 and
-        evidence_count >= 5 and
-        alignment_score >= 70 and
-        has_specific_component and
-        has_causal_reasoning and
-        not missing_subsystem_analysis and
-        (not is_fault_type or has_awdp or has_awdp_ref) and
-        (has_amp_ref or has_real_dmc or has_awdp_ref)
-    )
+    if is_procedure_type:
+        # PROCEDURE 95% CRITERIA:
+        # Must have the actual IETP/DMC reference AND procedure content
+        can_exceed_95 = (
+            coverage_score >= 80 and
+            system_analysis_score >= 60 and
+            (has_amp_ref or has_real_dmc or has_ietp_dmc_code) and
+            (has_procedure_steps or has_specific_component) and
+            alignment_score >= 50
+        )
+    else:
+        # FAULT ISOLATION 95% CRITERIA (strict):
+        can_exceed_95 = (
+            system_analysis_score >= 75 and
+            coverage_score >= 85 and
+            evidence_count >= 5 and
+            alignment_score >= 70 and
+            has_specific_component and
+            has_causal_reasoning and
+            not missing_subsystem_analysis and
+            (not is_fault_type or has_awdp or has_awdp_ref) and
+            (has_amp_ref or has_real_dmc or has_awdp_ref)
+        )
     
     if final_score >= 95 and not can_exceed_95:
         final_score = 94
         caps_applied.append("CAP 94%: Does not meet ALL strict criteria for SAFE_TO_PROCEED")
         missing = []
-        if system_analysis_score < 75:
-            missing.append(f"SystemAnalysis {system_analysis_score}<75")
-        if coverage_score < 85:
-            missing.append(f"Coverage {coverage_score}<85")
-        if evidence_count < 5:
-            missing.append(f"Evidence {evidence_count}<5")
-        if alignment_score < 70:
-            missing.append(f"Alignment {alignment_score}<70")
-        if not has_specific_component:
-            missing.append("NoSpecificComponent")
-        if not has_causal_reasoning:
-            missing.append("NoCausalReasoning")
-        if is_fault_type and not has_awdp and not has_awdp_ref:
-            missing.append("NoAWDP")
-        if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
-            missing.append("NoManualRef")
-        if missing_subsystem_analysis:
-            missing.append(f"MissingSubsystem({', '.join(missing_subsystem_analysis)})")
+        if is_procedure_type:
+            if coverage_score < 80:
+                missing.append(f"Coverage {coverage_score}<80")
+            if system_analysis_score < 60:
+                missing.append(f"SystemAnalysis {system_analysis_score}<60")
+            if not has_amp_ref and not has_real_dmc and not has_ietp_dmc_code:
+                missing.append("NoIETP/DMC/AMP reference")
+            if not has_procedure_steps and not has_specific_component:
+                missing.append("NoProcedureSteps")
+            if alignment_score < 50:
+                missing.append(f"Alignment {alignment_score}<50")
+        else:
+            if system_analysis_score < 75:
+                missing.append(f"SystemAnalysis {system_analysis_score}<75")
+            if coverage_score < 85:
+                missing.append(f"Coverage {coverage_score}<85")
+            if evidence_count < 5:
+                missing.append(f"Evidence {evidence_count}<5")
+            if alignment_score < 70:
+                missing.append(f"Alignment {alignment_score}<70")
+            if not has_specific_component:
+                missing.append("NoSpecificComponent")
+            if not has_causal_reasoning:
+                missing.append("NoCausalReasoning")
+            if is_fault_type and not has_awdp and not has_awdp_ref:
+                missing.append("NoAWDP")
+            if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
+                missing.append("NoManualRef")
+            if missing_subsystem_analysis:
+                missing.append(f"MissingSubsystem({', '.join(missing_subsystem_analysis)})")
         print(f"[CrewAI] 95% BLOCKED - Missing: {', '.join(missing)}")
     
     if caps_applied:
@@ -990,7 +1103,9 @@ def calculate_certainty_score(
         },
         "can_exceed_95": can_exceed_95,
         "caps_applied": caps_applied,
-        "evidence_found": list(found_evidence.keys())
+        "evidence_found": list(found_evidence.keys()),
+        "is_procedure_type": is_procedure_type,
+        "has_ietp_dmc_code": has_ietp_dmc_code
     }
 
 def format_diagnosis_text(rag_result: Dict[str, Any], query: str) -> str:
