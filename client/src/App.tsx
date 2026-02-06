@@ -16,6 +16,7 @@ import SmartInventory from "@/pages/SmartInventory";
 import AdminExperts from "@/pages/AdminExperts";
 import AdminUsers from "@/pages/AdminUsers";
 import Settings from "@/pages/Settings";
+import IpdPartChecker from "@/pages/IpdPartChecker";
 import Login from "@/pages/Login";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
@@ -50,6 +51,7 @@ function AuthenticatedApp() {
                 <Route path="/troubleshooting-history" component={HistoricalTroubleshooting} />
                 <Route path="/fleet-unavailability" component={FleetUnavailability} />
                 <Route path="/smart-inventory" component={SmartInventory} />
+                <Route path="/ipd-checker" component={IpdPartChecker} />
                 <Route path="/admin/experts" component={AdminExperts} />
                 <Route path="/admin/users" component={AdminUsers} />
                 <Route path="/settings" component={Settings} />

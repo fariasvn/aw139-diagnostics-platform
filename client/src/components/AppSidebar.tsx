@@ -10,7 +10,7 @@ import {
   SidebarHeader,
   SidebarFooter
 } from "@/components/ui/sidebar";
-import { Home, FileText, History, Wrench, Settings, Plane, Package, BarChart3, AlertTriangle, LogOut, UserCog, Users } from "lucide-react";
+import { Home, FileText, History, Wrench, Settings, Plane, Package, BarChart3, AlertTriangle, LogOut, UserCog, Users, BookOpen } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import QuotaIndicator from "./QuotaIndicator";
@@ -22,6 +22,7 @@ const menuItems = [
   { title: "Historical Troubleshooting", icon: History, url: "/troubleshooting-history" },
   { title: "Fleet Unavailability", icon: AlertTriangle, url: "/fleet-unavailability" },
   { title: "Smart Inventory", icon: BarChart3, url: "/smart-inventory" },
+  { title: "IPD Part Checker", icon: BookOpen, url: "/ipd-checker" },
   { title: "DMC Tools", icon: Wrench, url: "/tools" },
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
