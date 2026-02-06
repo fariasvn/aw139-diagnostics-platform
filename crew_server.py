@@ -428,48 +428,68 @@ def extract_recommended_tests(text: str, ata: str) -> List[Dict[str, Any]]:
     
     return tests
 
-def calculate_certainty_score(rag_result: Dict[str, Any], diagnosis: str, query: str = "", ata_filter: str = "") -> Dict[str, Any]:
+def calculate_certainty_score(
+    rag_result: Dict[str, Any], 
+    diagnosis: str, 
+    query: str = "", 
+    ata_filter: str = "",
+    task_type: str = "fault_isolation",
+    has_awdp: bool = False
+) -> Dict[str, Any]:
     """
-    REVISED CERTAINTY SCORE ENGINE - Calibrated Formula
+    RIGOROUS CERTAINTY SCORE ENGINE v3.0 - Safety-Critical Calibration
     
-    Final Certainty Score =
-      (CoverageScore * 0.40) +
-      (SystemUnderstandingScore * 0.30) +
+    Philosophy: The score must reflect whether the diagnosis ACTUALLY addresses
+    the problem with SPECIFIC information from the IETP/AMP/AWDP documentation.
+    Generic responses with technical-sounding words must NOT score high.
+    
+    5-Component Formula:
+      (CoverageScore * 0.25) +
+      (SystemAnalysisScore * 0.25) +
       (EvidenceScore * 0.20) +
-      (ConsistencyScore * 0.10)
+      (QueryAlignmentScore * 0.20) +
+      (DiagramAnalysisScore * 0.10)
     
-    HARD RULE: Score >= 95% ONLY IF all strict criteria are met.
+    HARD RULES:
+    - Score >= 95% ONLY IF strict criteria are ALL met
+    - Fault isolation without AWDP analysis: capped at 85%
+    - Generic diagnosis without specific part/component analysis: capped at 80%
+    - No specific DMC/AMP references: capped at 85%
     """
     docs = rag_result.get("documents") or rag_result.get("chunks") or []
     doc_count = len(docs)
     diagnosis_lower = diagnosis.lower()
     query_lower = query.lower() if query else ""
     
-    print(f"[CrewAI] === CERTAINTY SCORE CALCULATION ===")
+    print(f"[CrewAI] === CERTAINTY SCORE v3.0 - RIGOROUS CALCULATION ===")
     print(f"[CrewAI] Query: {query[:80]}...")
     print(f"[CrewAI] ATA Filter: {ata_filter}")
+    print(f"[CrewAI] Task Type: {task_type}")
+    print(f"[CrewAI] AWDP Found: {has_awdp}")
     print(f"[CrewAI] Documents found: {doc_count}")
     
     # =========================================================================
-    # 1. COVERAGE SCORE (0-100%) - Weight: 40%
-    # Verify information is from the selected ATA chapter/manual
+    # 1. COVERAGE SCORE (0-100%) - Weight: 25%
+    # Are the RAG documents actually from the relevant ATA/manual?
+    # Stricter: requires high ratio of matching docs
     # =========================================================================
     coverage_score = 0
     coverage_details = []
     
     if doc_count == 0:
         coverage_score = 0
-        coverage_details.append("No documents found in selected manual")
+        coverage_details.append("CRITICAL: No documents found in RAG")
     else:
-        # Check if documents are from the correct ATA/manual
         ata_code = ata_filter.replace("ATA ", "").strip() if ata_filter else ""
         matching_docs = 0
+        high_relevance_docs = 0
         
         for doc in docs:
             doc_path = doc.get("doc_path", "").lower()
             doc_content = doc.get("content", "").lower()
+            doc_score = doc.get("score", 0) or doc.get("similarity", 0)
             
-            # Training materials check
+            is_match = False
             if ata_filter in ["PRIMUS_EPIC", "PT6C_67CD", "AW139_AIRFRAME"]:
                 training_keywords = {
                     "PRIMUS_EPIC": ["primus", "epic", "avionics", "cmc", "fms"],
@@ -477,91 +497,128 @@ def calculate_certainty_score(rag_result: Dict[str, Any], diagnosis: str, query:
                     "AW139_AIRFRAME": ["airframe", "structure", "fuselage", "cabin"]
                 }
                 if any(kw in doc_content or kw in doc_path for kw in training_keywords.get(ata_filter, [])):
-                    matching_docs += 1
-            # ATA code check
+                    is_match = True
             elif ata_code and f"-{ata_code[:2]}-" in doc_path:
-                matching_docs += 1
+                is_match = True
             elif not ata_code:
-                matching_docs += 1  # No filter = all docs valid
+                is_match = True
+            
+            if is_match:
+                matching_docs += 1
+                if isinstance(doc_score, (int, float)) and doc_score > 0.7:
+                    high_relevance_docs += 1
         
         if doc_count > 0:
             coverage_ratio = matching_docs / doc_count
-            if coverage_ratio >= 0.8:
+            if coverage_ratio >= 0.8 and high_relevance_docs >= 3:
                 coverage_score = 100
-                coverage_details.append(f"Excellent: {matching_docs}/{doc_count} docs from selected manual")
+                coverage_details.append(f"Excellent: {matching_docs}/{doc_count} docs, {high_relevance_docs} high-relevance")
+            elif coverage_ratio >= 0.8:
+                coverage_score = 85
+                coverage_details.append(f"Good match ratio but few high-relevance: {matching_docs}/{doc_count}")
             elif coverage_ratio >= 0.5:
-                coverage_score = 75
-                coverage_details.append(f"Good: {matching_docs}/{doc_count} docs from selected manual")
+                coverage_score = 65
+                coverage_details.append(f"Moderate: {matching_docs}/{doc_count} docs from selected manual")
             elif coverage_ratio >= 0.2:
-                coverage_score = 50
-                coverage_details.append(f"Partial: {matching_docs}/{doc_count} docs from selected manual")
+                coverage_score = 40
+                coverage_details.append(f"Weak: {matching_docs}/{doc_count} docs from selected manual")
             else:
-                coverage_score = 20
+                coverage_score = 15
                 coverage_details.append(f"Poor: Only {matching_docs}/{doc_count} docs from selected manual")
     
     print(f"[CrewAI] Coverage Score: {coverage_score}% - {coverage_details}")
     
     # =========================================================================
-    # 2. SYSTEM UNDERSTANDING SCORE (0-100%) - Weight: 30%
-    # Check if diagnosis explains system logic, components, control flow
+    # 2. SYSTEM ANALYSIS SCORE (0-100%) - Weight: 25%
+    # Does the diagnosis explain HOW the system works and WHY the problem occurs?
+    # NOT just generic keywords - must show causal reasoning
     # =========================================================================
-    system_understanding_score = 0
-    understanding_details = []
+    system_analysis_score = 0
+    analysis_details = []
     
-    # Keywords indicating system understanding
-    system_keywords = [
-        'component', 'sensor', 'control unit', 'logic', 'trigger', 'condition',
-        'circuit', 'relay', 'switch', 'signal', 'monitor', 'controller',
-        'system', 'module', 'interface', 'function', 'operation', 'mechanism'
-    ]
+    has_specific_component = bool(re.search(
+        r'\b(?:actuator|valve|pump|generator|starter|relay|contactor|'
+        r'solenoid|bearing|seal|bushing|link|rod|arm|gear|shaft|'
+        r'damper|accumulator|filter|regulator|transducer|'
+        r'steering|shimmy|oleo|strut|torque\s*link|scissor|'
+        r'swashplate|servo|pitch\s*link|collective|pedal|'
+        r'connector|harness|bus|breaker|ground\s*point)\b',
+        diagnosis_lower
+    ))
     
-    # Check for system explanation patterns
-    has_system_description = any(kw in diagnosis_lower for kw in system_keywords)
-    has_logic_flow = any(phrase in diagnosis_lower for phrase in [
-        'when the', 'if the', 'causes', 'triggers', 'results in', 'controls',
-        'monitors', 'sends signal', 'receives', 'activates', 'deactivates'
-    ])
-    has_condition_analysis = 'condition' in diagnosis_lower or 'state' in diagnosis_lower
-    has_normal_abnormal = 'normal' in diagnosis_lower or 'abnormal' in diagnosis_lower
+    has_causal_reasoning = bool(re.search(
+        r'\b(?:because|due to|caused by|resulting from|leads to|'
+        r'prevents|restricts|blocks|fails to|unable to|'
+        r'when .{5,40} the .{5,30} (?:cannot|does not|fails|stops)|'
+        r'if .{5,30} then .{5,30}|'
+        r'this (?:causes|results|prevents|restricts))\b',
+        diagnosis_lower
+    ))
     
-    # Score system understanding - adjusted weights for realistic 95%+ scores
-    understanding_points = 0
-    if has_system_description:
-        understanding_points += 35
-        understanding_details.append("System components described")
-    if has_logic_flow:
-        understanding_points += 35
-        understanding_details.append("Logic flow explained")
-    if has_condition_analysis:
-        understanding_points += 15
-        understanding_details.append("Condition analysis present")
-    if has_normal_abnormal:
-        understanding_points += 15
-        understanding_details.append("Normal/abnormal states defined")
+    has_mechanism_explanation = bool(re.search(
+        r'\b(?:mechanism|assembly|linkage|hydraulic\s*(?:line|circuit|system)|'
+        r'electrical\s*(?:circuit|path|bus)|control\s*(?:chain|path|loop)|'
+        r'mechanical\s*(?:connection|linkage|system)|'
+        r'steering\s*(?:mechanism|system|assembly)|'
+        r'how (?:the|this) .{5,40} works|'
+        r'the .{5,30} is (?:connected|linked|driven|controlled) by)\b',
+        diagnosis_lower
+    ))
     
-    # Bonus for comprehensive explanations
-    if has_system_description and has_logic_flow:
-        understanding_points += 10
-        understanding_details.append("Comprehensive system explanation")
+    has_specific_location = bool(re.search(
+        r'\b(?:LH|RH|left|right|forward|aft|upper|lower|inboard|outboard|'
+        r'station\s*\d|frame\s*\d|bay\s*\d|zone\s*\d|'
+        r'panel\s*[A-Z0-9]|rack\s*\d|shelf\s*\d)\b',
+        diagnosis, re.IGNORECASE
+    ))
     
-    system_understanding_score = min(understanding_points, 100)
+    has_failure_mode = bool(re.search(
+        r'\b(?:worn|corroded|seized|cracked|broken|leaking|loose|'
+        r'intermittent|open\s*circuit|short\s*circuit|grounded|'
+        r'binding|sticking|jamm(?:ed|ing)|frozen|stripped|'
+        r'fatigued|deformed|contaminated|degraded|misaligned)\b',
+        diagnosis_lower
+    ))
     
-    # Cap at 40% if no clear system explanation
-    if not has_system_description and not has_logic_flow:
-        system_understanding_score = min(system_understanding_score, 40)
-        understanding_details.append("WARNING: System logic not clearly articulated")
+    analysis_points = 0
+    if has_specific_component:
+        analysis_points += 25
+        analysis_details.append("Specific component identified")
+    if has_causal_reasoning:
+        analysis_points += 25
+        analysis_details.append("Causal reasoning present")
+    if has_mechanism_explanation:
+        analysis_points += 20
+        analysis_details.append("Mechanism/system explained")
+    if has_specific_location:
+        analysis_points += 15
+        analysis_details.append("Specific location referenced")
+    if has_failure_mode:
+        analysis_points += 15
+        analysis_details.append("Failure mode identified")
     
-    print(f"[CrewAI] System Understanding Score: {system_understanding_score}% - {understanding_details}")
+    system_analysis_score = min(analysis_points, 100)
+    
+    if not has_specific_component and not has_mechanism_explanation:
+        system_analysis_score = min(system_analysis_score, 30)
+        analysis_details.append("WARNING: No specific component or mechanism analysis")
+    
+    if not has_causal_reasoning:
+        system_analysis_score = min(system_analysis_score, 50)
+        analysis_details.append("WARNING: No causal reasoning (why the problem occurs)")
+    
+    print(f"[CrewAI] System Analysis Score: {system_analysis_score}% - {analysis_details}")
     
     # =========================================================================
     # 3. EVIDENCE SCORE (0-100%) - Weight: 20%
-    # Count real technical evidences found
+    # Specific technical values, REAL part numbers, manual references
+    # Generic "check continuity" without specifics scores LOW
     # =========================================================================
     evidence_score = 0
     evidence_count = 0
     evidence_details = []
+    found_evidence = {}
     
-    # Detect specific technical values
     evidence_patterns = {
         'torque': r'\b\d+\.?\d*\s*(?:N\s*m|Nm|lbf?\s*in|lb-in|ft-lb|lb-ft)\b',
         'pressure': r'\b\d+\.?\d*\s*(?:psi|bar|kPa|MPa)\b',
@@ -570,145 +627,369 @@ def calculate_certainty_score(rag_result: Dict[str, Any], diagnosis: str, query:
         'temperature': r'\b-?\d+\.?\d*\s*°?(?:C|F)\b',
         'dimension': r'\b\d+\.?\d*\s*(?:mm|cm|m|in|ft)\b',
         'resistance': r'\b\d+\.?\d*\s*(?:ohm|Ω|kohm|MΩ)\b',
-        'ip_address': r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b',
     }
     
-    found_evidence = {}
     for ev_type, pattern in evidence_patterns.items():
         matches = re.findall(pattern, diagnosis, re.IGNORECASE)
         if matches:
             found_evidence[ev_type] = matches
             evidence_count += len(matches)
     
-    # Check for other evidence types
-    if re.search(r'\b(?:DMC|AMP|AWD|AMM|IETP)\s*[-:]?\s*\d', diagnosis, re.IGNORECASE):
-        evidence_count += 1
-        found_evidence['manual_ref'] = True
+    has_real_dmc = bool(re.search(
+        r'\b\d{2}-[A-Z]-\d{2}-\d{2}-\d{2}-\d{2}[A-Z]?',
+        diagnosis, re.IGNORECASE
+    ))
+    if has_real_dmc:
+        evidence_count += 3
+        found_evidence['dmc_code'] = True
     
-    if re.search(r'\bstep\s*\d+|step\s*[1-9]', diagnosis, re.IGNORECASE):
-        evidence_count += 1
-        found_evidence['procedure_steps'] = True
+    has_amp_ref = bool(re.search(r'\b(?:AMP|AMM)\s*[-:]?\s*\d{2}[-]\d{2}[-]\d{2}', diagnosis, re.IGNORECASE))
+    if has_amp_ref:
+        evidence_count += 2
+        found_evidence['amp_ref'] = True
     
-    if re.search(r'\b\d{3,}[A-Z]?\d*[A-Z]?[-]?\d*\b', diagnosis):  # Part numbers
-        evidence_count += 1
-        found_evidence['part_numbers'] = True
+    has_awdp_ref = bool(re.search(r'\b(?:AWD|AWDP)\s*[-:]?\s*\d{2}', diagnosis, re.IGNORECASE))
+    if has_awdp_ref:
+        evidence_count += 2
+        found_evidence['awdp_ref'] = True
     
-    # Scale evidence score
+    has_real_part_number = bool(re.search(r'\b(?:3G\d{4}[A-Z0-9-]+|\d{3}-\d{4}-\d{2}|P/N\s*[A-Z0-9-]{6,})\b', diagnosis, re.IGNORECASE))
+    if has_real_part_number:
+        evidence_count += 2
+        found_evidence['real_part_number'] = True
+    
+    has_connector_pin = bool(re.search(r'\b(?:pin\s*\d+|connector\s*[A-Z]?\d|plug\s*[A-Z]?\d)\b', diagnosis, re.IGNORECASE))
+    if has_connector_pin:
+        evidence_count += 1
+        found_evidence['connector_pin'] = True
+    
     if evidence_count == 0:
         evidence_score = 0
-    elif evidence_count == 1:
+    elif evidence_count <= 2:
         evidence_score = 20
-    elif evidence_count == 2:
-        evidence_score = 35
-    elif evidence_count == 3:
-        evidence_score = 50
-    elif evidence_count >= 4 and evidence_count < 7:
-        evidence_score = 75
-    else:  # 7+
+    elif evidence_count <= 4:
+        evidence_score = 40
+    elif evidence_count <= 6:
+        evidence_score = 60
+    elif evidence_count <= 9:
+        evidence_score = 80
+    else:
         evidence_score = 100
     
-    evidence_details.append(f"Found {evidence_count} technical evidences: {list(found_evidence.keys())}")
+    evidence_details.append(f"Found {evidence_count} evidences: {list(found_evidence.keys())}")
     print(f"[CrewAI] Evidence Score: {evidence_score}% - {evidence_details}")
     
     # =========================================================================
-    # 4. CONSISTENCY SCORE (0-100%) - Weight: 10%
-    # Evaluate if conclusions follow system logic
+    # 4. QUERY-DIAGNOSIS ALIGNMENT SCORE (0-100%) - Weight: 20%
+    # Does the diagnosis actually address the SPECIFIC problem asked?
+    # Uses SUBSYSTEM INFERENCE: maps query concepts to required components
+    # E.g., "not turning left" → must discuss steering/nose gear mechanism
     # =========================================================================
-    consistency_score = 100  # Start at 100, deduct for inconsistencies
-    consistency_details = []
+    alignment_score = 0
+    alignment_details = []
     
-    # Check for contradictions
-    contradiction_patterns = [
-        (r'should be\s+(\d+)', r'but is\s+(\d+)'),  # Value contradictions
-        ('not recommended', 'recommended'),
-        ('do not', 'must'),
-    ]
+    # --- SUBSYSTEM INFERENCE ENGINE ---
+    # Maps query concepts to required subsystem components in the diagnosis
+    # If the query implies a specific subsystem, the diagnosis MUST mention it
+    subsystem_map = {
+        'steering': {
+            'triggers': ['turn', 'turning', 'steer', 'steering', 'taxi', 'taxing', 'taxiing', 'ground maneuver'],
+            'required': ['steering', 'nose wheel', 'nosewheel', 'nose gear', 'nose landing gear',
+                         'shimmy damper', 'torque link', 'steering actuator', 'steering valve',
+                         'steering cylinder', 'castering', 'tiller'],
+            'label': 'Nose Wheel Steering System'
+        },
+        'landing_gear': {
+            'triggers': ['landing gear', 'gear', 'retract', 'extend', 'gear up', 'gear down',
+                         'squat switch', 'weight on wheels', 'wow'],
+            'required': ['landing gear', 'actuator', 'uplock', 'downlock', 'squat switch',
+                         'gear door', 'oleo', 'strut', 'retract', 'extend', 'selector valve'],
+            'label': 'Landing Gear System'
+        },
+        'hydraulic': {
+            'triggers': ['hydraulic', 'pressure', 'pump', 'fluid', 'leak'],
+            'required': ['hydraulic pump', 'reservoir', 'accumulator', 'pressure switch',
+                         'relief valve', 'hydraulic module', 'servo', 'actuator', 'manifold',
+                         'filter', 'hydraulic system'],
+            'label': 'Hydraulic System'
+        },
+        'engine': {
+            'triggers': ['engine', 'turbine', 'power', 'torque', 'ng', 'np', 'itt', 'start',
+                         'hot start', 'hung start', 'flameout', 'ecu', 'fadec'],
+            'required': ['engine', 'turbine', 'compressor', 'combustion', 'fuel control',
+                         'fuel nozzle', 'igniter', 'gearbox', 'oil', 'bearing', 'fadec', 'ecu'],
+            'label': 'Engine/Powerplant System'
+        },
+        'electrical': {
+            'triggers': ['generator', 'battery', 'bus', 'power loss', 'electrical', 'voltage',
+                         'breaker', 'tripped', 'no power'],
+            'required': ['generator', 'battery', 'bus', 'contactor', 'breaker', 'relay',
+                         'transformer', 'rectifier', 'inverter', 'gcr', 'gcb', 'btb'],
+            'label': 'Electrical Power System'
+        },
+        'flight_controls': {
+            'triggers': ['cyclic', 'collective', 'pedal', 'yaw', 'pitch', 'roll',
+                         'autopilot', 'trim', 'stick', 'vibration'],
+            'required': ['servo', 'actuator', 'swashplate', 'pitch link', 'mixing unit',
+                         'trim', 'boost', 'feel spring', 'gradient unit', 'autopilot'],
+            'label': 'Flight Control System'
+        },
+        'rotor': {
+            'triggers': ['rotor', 'blade', 'hub', 'mast', 'tail rotor', 'main rotor',
+                         'track', 'balance', 'vibration', 'lead-lag'],
+            'required': ['rotor', 'blade', 'hub', 'damper', 'bearing', 'pitch horn',
+                         'lead-lag', 'drag brace', 'elastomeric', 'spindle'],
+            'label': 'Rotor System'
+        },
+        'avionics': {
+            'triggers': ['display', 'screen', 'cas', 'warning', 'caution', 'advisory',
+                         'radio', 'nav', 'gps', 'transponder', 'ahrs', 'adc'],
+            'required': ['display', 'processor', 'symbol generator', 'dmu', 'dcu',
+                         'sensor', 'computer', 'bus', 'arinc', 'can bus'],
+            'label': 'Avionics System'
+        },
+        'fuel': {
+            'triggers': ['fuel', 'tank', 'boost pump', 'transfer', 'crossfeed', 'quantity'],
+            'required': ['fuel pump', 'fuel tank', 'fuel valve', 'boost pump', 'transfer pump',
+                         'crossfeed', 'fuel quantity', 'fuel filter', 'fuel line'],
+            'label': 'Fuel System'
+        },
+    }
     
-    # Check if diagnosis contradicts itself
-    has_contradiction = False
-    if 'however' in diagnosis_lower and 'contradict' in diagnosis_lower:
-        has_contradiction = True
-    if 'but' in diagnosis_lower and 'inconsistent' in diagnosis_lower:
-        has_contradiction = True
+    inferred_subsystems = []
+    missing_subsystem_analysis = []
     
-    if has_contradiction:
-        consistency_score = 50
-        consistency_details.append("Potential contradiction detected")
+    for subsys_name, subsys_data in subsystem_map.items():
+        query_matches = any(trigger in query_lower for trigger in subsys_data['triggers'])
+        if query_matches:
+            diagnosis_has_subsystem = any(req in diagnosis_lower for req in subsys_data['required'])
+            inferred_subsystems.append(subsys_data['label'])
+            if not diagnosis_has_subsystem:
+                missing_subsystem_analysis.append(subsys_data['label'])
+                alignment_details.append(f"CRITICAL: Query implies {subsys_data['label']} but diagnosis does NOT analyze it")
+    
+    # --- KEYWORD OVERLAP CHECK ---
+    query_clean = re.sub(r'\[.*?\]', '', query_lower)
+    query_clean = re.sub(r'ata\s*\d+', '', query_clean)
+    query_clean = re.sub(r'aw139|s/n:?\s*\d+', '', query_clean)
+    
+    important_words = re.findall(r'\b[a-z]{4,}\b', query_clean)
+    stop_words = {'does', 'have', 'been', 'with', 'that', 'this', 'from', 'what',
+                  'when', 'where', 'which', 'there', 'their', 'about', 'would',
+                  'could', 'should', 'during', 'before', 'after', 'helicopter',
+                  'aircraft', 'system', 'problem', 'issue', 'fault', 'check'}
+    query_keywords = {w for w in important_words if w not in stop_words and len(w) >= 4}
+    
+    if query_keywords:
+        matched_keywords = sum(1 for kw in query_keywords if kw in diagnosis_lower)
+        keyword_ratio = matched_keywords / len(query_keywords) if query_keywords else 0
+        
+        if keyword_ratio >= 0.6:
+            alignment_score = 100
+        elif keyword_ratio >= 0.4:
+            alignment_score = 70
+        elif keyword_ratio >= 0.2:
+            alignment_score = 45
+        else:
+            alignment_score = 20
+            alignment_details.append(f"Weak keyword overlap: {matched_keywords}/{len(query_keywords)}")
     else:
-        consistency_details.append("No contradictions found")
+        alignment_score = 50
     
-    # Check if conclusion aligns with query type
-    query_asks_procedure = any(kw in query_lower for kw in ['how to', 'procedure', 'steps', 'install', 'remove'])
-    query_asks_fault = any(kw in query_lower for kw in ['fail', 'fault', 'error', 'warning', 'caution'])
-    query_asks_value = any(kw in query_lower for kw in ['what is', 'torque', 'pressure', 'voltage', 'value'])
+    # --- SUBSYSTEM PENALTY (most important) ---
+    if missing_subsystem_analysis:
+        alignment_score = min(alignment_score, 25)
+        alignment_details.append(f"SUBSYSTEM PENALTY: Diagnosis missing analysis of {', '.join(missing_subsystem_analysis)}")
+    elif inferred_subsystems:
+        alignment_details.append(f"Subsystem verified: {', '.join(inferred_subsystems)} analyzed in diagnosis")
     
-    diagnosis_has_procedure = 'step' in diagnosis_lower or re.search(r'\d+\.', diagnosis)
-    diagnosis_has_fault_analysis = 'fault' in diagnosis_lower or 'troubleshoot' in diagnosis_lower
-    diagnosis_has_values = bool(found_evidence)
+    # --- GENERIC DIAGNOSIS PENALTY ---
+    is_generic_diagnosis = bool(re.search(
+        r'(?:check continuity|verify wiring|inspect connector|check hydraulic)',
+        diagnosis_lower
+    )) and not has_specific_component and not has_mechanism_explanation
     
-    # Alignment check
-    if query_asks_procedure and not diagnosis_has_procedure:
-        consistency_score -= 25
-        consistency_details.append("Query asked for procedure but none provided")
-    if query_asks_value and not diagnosis_has_values:
-        consistency_score -= 25
-        consistency_details.append("Query asked for values but none found")
-    if query_asks_fault and not diagnosis_has_fault_analysis and not diagnosis_has_procedure:
-        consistency_score -= 25
-        consistency_details.append("Query asked for fault analysis but incomplete")
+    if is_generic_diagnosis:
+        alignment_score = min(alignment_score, 35)
+        alignment_details.append("PENALTY: Generic troubleshooting without specific component analysis")
     
-    consistency_score = max(0, consistency_score)
-    print(f"[CrewAI] Consistency Score: {consistency_score}% - {consistency_details}")
+    # --- ELECTRICAL MISMATCH PENALTY ---
+    # If diagnosis suggests electrical checks but query implies mechanical problem
+    diagnosis_suggests_electrical = any(term in diagnosis_lower for term in 
+        ['continuity', 'wiring', 'circuit', 'resistance', 'voltage'])
+    query_implies_mechanical = any(trigger in query_lower for trigger in 
+        ['turn', 'steering', 'gear', 'stuck', 'binding', 'seized', 'jam', 'stiff',
+         'vibration', 'noise', 'grind', 'click', 'play', 'loose', 'worn'])
+    
+    if diagnosis_suggests_electrical and query_implies_mechanical and not has_mechanism_explanation:
+        alignment_score = min(alignment_score, 40)
+        alignment_details.append("PENALTY: Diagnosis suggests electrical checks for likely mechanical problem without analyzing mechanism")
+    
+    print(f"[CrewAI] Query Alignment Score: {alignment_score}% - {alignment_details}")
+    if inferred_subsystems:
+        print(f"[CrewAI] Inferred subsystems: {inferred_subsystems}")
+    if missing_subsystem_analysis:
+        print(f"[CrewAI] MISSING subsystem analysis: {missing_subsystem_analysis}")
+    
+    # =========================================================================
+    # 5. DIAGRAM/SCHEMATIC ANALYSIS SCORE (0-100%) - Weight: 10%
+    # For fault isolation: did the system actually analyze AWDP diagrams?
+    # For procedures: did it reference the correct AMP section?
+    # =========================================================================
+    diagram_score = 0
+    diagram_details = []
+    
+    is_fault_type = task_type in ["fault_isolation", "operational_test", "functional_test"]
+    is_procedure_type = task_type in ["remove_procedure", "install_procedure", "disassembly", "assembly"]
+    
+    if is_fault_type:
+        if has_awdp and has_awdp_ref:
+            diagram_score = 100
+            diagram_details.append("AWDP diagram found and referenced in diagnosis")
+        elif has_awdp:
+            diagram_score = 70
+            diagram_details.append("AWDP document found but not explicitly analyzed")
+        elif has_awdp_ref:
+            diagram_score = 60
+            diagram_details.append("AWDP referenced but document not in RAG results")
+        else:
+            diagram_score = 20
+            diagram_details.append("WARNING: No AWDP/wiring diagram analysis for fault isolation")
+    elif is_procedure_type:
+        if has_amp_ref or has_real_dmc:
+            diagram_score = 100
+            diagram_details.append("Correct manual section referenced for procedure")
+        else:
+            diagram_score = 40
+            diagram_details.append("Procedure without specific manual reference")
+    else:
+        if has_amp_ref or has_real_dmc or has_awdp_ref:
+            diagram_score = 100
+            diagram_details.append("Manual references found")
+        else:
+            diagram_score = 50
+            diagram_details.append("No specific manual references")
+    
+    print(f"[CrewAI] Diagram Analysis Score: {diagram_score}% - {diagram_details}")
     
     # =========================================================================
     # FINAL SCORE CALCULATION
     # =========================================================================
     final_score = (
-        (coverage_score * 0.40) +
-        (system_understanding_score * 0.30) +
+        (coverage_score * 0.25) +
+        (system_analysis_score * 0.25) +
         (evidence_score * 0.20) +
-        (consistency_score * 0.10)
+        (alignment_score * 0.20) +
+        (diagram_score * 0.10)
     )
     
-    print(f"[CrewAI] === SCORE BREAKDOWN ===")
-    print(f"[CrewAI] Coverage: {coverage_score}% x 0.40 = {coverage_score * 0.40:.1f}")
-    print(f"[CrewAI] System Understanding: {system_understanding_score}% x 0.30 = {system_understanding_score * 0.30:.1f}")
-    print(f"[CrewAI] Evidence: {evidence_score}% x 0.20 = {evidence_score * 0.20:.1f}")
-    print(f"[CrewAI] Consistency: {consistency_score}% x 0.10 = {consistency_score * 0.10:.1f}")
+    print(f"[CrewAI] === SCORE BREAKDOWN v3.0 ===")
+    print(f"[CrewAI] Coverage:         {coverage_score:3}% x 0.25 = {coverage_score * 0.25:.1f}")
+    print(f"[CrewAI] System Analysis:  {system_analysis_score:3}% x 0.25 = {system_analysis_score * 0.25:.1f}")
+    print(f"[CrewAI] Evidence:         {evidence_score:3}% x 0.20 = {evidence_score * 0.20:.1f}")
+    print(f"[CrewAI] Query Alignment:  {alignment_score:3}% x 0.20 = {alignment_score * 0.20:.1f}")
+    print(f"[CrewAI] Diagram Analysis: {diagram_score:3}% x 0.10 = {diagram_score * 0.10:.1f}")
     print(f"[CrewAI] Raw Total: {final_score:.1f}%")
     
     # =========================================================================
-    # HARD RULE FOR HIGH CONFIDENCE (>= 95%)
-    # Relaxed criteria: if weighted formula produces 95%+, allow it
-    # Only cap if fundamental evidence is missing
+    # HARD CAPS - Safety-critical rules that CANNOT be overridden
+    # =========================================================================
+    caps_applied = []
+    
+    if is_fault_type and not has_awdp and not has_awdp_ref:
+        if final_score > 85:
+            final_score = 85
+            caps_applied.append("CAP 85%: Fault isolation without AWDP/wiring analysis")
+    
+    if is_generic_diagnosis:
+        if final_score > 80:
+            final_score = 80
+            caps_applied.append("CAP 80%: Generic diagnosis without specific component analysis")
+    
+    if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
+        if final_score > 85:
+            final_score = 85
+            caps_applied.append("CAP 85%: No specific manual references (DMC/AMP/AWDP)")
+    
+    if not has_specific_component and not has_real_part_number:
+        if final_score > 82:
+            final_score = 82
+            caps_applied.append("CAP 82%: No specific component or part number identified")
+    
+    if not has_causal_reasoning and is_fault_type:
+        if final_score > 80:
+            final_score = 80
+            caps_applied.append("CAP 80%: Fault isolation without causal reasoning")
+    
+    if missing_subsystem_analysis:
+        if final_score > 75:
+            final_score = 75
+            caps_applied.append(f"CAP 75%: Diagnosis does not analyze required subsystem: {', '.join(missing_subsystem_analysis)}")
+    
+    if diagnosis_suggests_electrical and query_implies_mechanical and not has_mechanism_explanation:
+        if final_score > 78:
+            final_score = 78
+            caps_applied.append("CAP 78%: Electrical checks for mechanical problem without mechanism analysis")
+    
+    # =========================================================================
+    # HARD RULE FOR 95%+ (SAFE_TO_PROCEED threshold)
+    # ALL of these must be true for score to reach 95%+
     # =========================================================================
     can_exceed_95 = (
-        system_understanding_score >= 60 and
-        coverage_score >= 70 and
-        evidence_count >= 2 and
-        consistency_score >= 70
+        system_analysis_score >= 75 and
+        coverage_score >= 85 and
+        evidence_count >= 5 and
+        alignment_score >= 70 and
+        has_specific_component and
+        has_causal_reasoning and
+        not missing_subsystem_analysis and
+        (not is_fault_type or has_awdp or has_awdp_ref) and
+        (has_amp_ref or has_real_dmc or has_awdp_ref)
     )
     
     if final_score >= 95 and not can_exceed_95:
         final_score = 94
-        print(f"[CrewAI] HARD RULE: Score capped at 94% - minimum criteria not met")
-        print(f"[CrewAI] Required: SystemUnderstanding>=60 ({system_understanding_score}), Coverage>=70 ({coverage_score}), Evidence>=2 ({evidence_count}), Consistency>=70 ({consistency_score})")
+        caps_applied.append("CAP 94%: Does not meet ALL strict criteria for SAFE_TO_PROCEED")
+        missing = []
+        if system_analysis_score < 75:
+            missing.append(f"SystemAnalysis {system_analysis_score}<75")
+        if coverage_score < 85:
+            missing.append(f"Coverage {coverage_score}<85")
+        if evidence_count < 5:
+            missing.append(f"Evidence {evidence_count}<5")
+        if alignment_score < 70:
+            missing.append(f"Alignment {alignment_score}<70")
+        if not has_specific_component:
+            missing.append("NoSpecificComponent")
+        if not has_causal_reasoning:
+            missing.append("NoCausalReasoning")
+        if is_fault_type and not has_awdp and not has_awdp_ref:
+            missing.append("NoAWDP")
+        if not has_amp_ref and not has_real_dmc and not has_awdp_ref:
+            missing.append("NoManualRef")
+        if missing_subsystem_analysis:
+            missing.append(f"MissingSubsystem({', '.join(missing_subsystem_analysis)})")
+        print(f"[CrewAI] 95% BLOCKED - Missing: {', '.join(missing)}")
     
-    # Floor at 40%
+    if caps_applied:
+        for cap in caps_applied:
+            print(f"[CrewAI] {cap}")
+    
     final_score = max(40, min(round(final_score), 100))
     
     print(f"[CrewAI] === FINAL CERTAINTY SCORE: {final_score}% ===")
     
-    # Return detailed breakdown for transparency
     return {
         "score": final_score,
         "breakdown": {
-            "coverage": {"score": coverage_score, "weight": 0.40, "details": coverage_details},
-            "system_understanding": {"score": system_understanding_score, "weight": 0.30, "details": understanding_details},
+            "coverage": {"score": coverage_score, "weight": 0.25, "details": coverage_details},
+            "system_analysis": {"score": system_analysis_score, "weight": 0.25, "details": analysis_details},
             "evidence": {"score": evidence_score, "weight": 0.20, "count": evidence_count, "details": evidence_details},
-            "consistency": {"score": consistency_score, "weight": 0.10, "details": consistency_details}
+            "query_alignment": {"score": alignment_score, "weight": 0.20, "details": alignment_details},
+            "diagram_analysis": {"score": diagram_score, "weight": 0.10, "details": diagram_details}
         },
         "can_exceed_95": can_exceed_95,
+        "caps_applied": caps_applied,
         "evidence_found": list(found_evidence.keys())
     }
 
@@ -1096,8 +1377,11 @@ Cross-Check Status: {verification_status}
     if not references and rag_result.get("references"):
         references = rag_result["references"][:10]
     
-    # Calculate certainty with new calibrated formula
-    certainty_result = calculate_certainty_score(rag_result, final_diagnosis, request.query, request.ata_code)
+    # Calculate certainty with rigorous v3.0 formula
+    certainty_result = calculate_certainty_score(
+        rag_result, final_diagnosis, request.query, request.ata_code,
+        task_type=task_type, has_awdp=has_awdp
+    )
     certainty_score = certainty_result["score"]
     certainty_breakdown = certainty_result.get("breakdown", {})
     
@@ -1169,7 +1453,10 @@ def run_crewai_diagnosis(request: DiagnoseRequest, start_time: float) -> Diagnos
         certainty_score = crew_result.get("certainty_score", 0)
         
         if certainty_score == 0:
-            certainty_result = calculate_certainty_score({"documents": []}, diagnosis_text, request.query, request.ata_code)
+            certainty_result = calculate_certainty_score(
+                {"documents": []}, diagnosis_text, request.query, request.ata_code,
+                task_type=request.task_type or "fault_isolation"
+            )
             certainty_score = certainty_result["score"]
         
         certainty_status = "SAFE_TO_PROCEED" if certainty_score >= CERTAINTY_THRESHOLD else "REQUIRE_EXPERT"
@@ -1340,7 +1627,10 @@ def run_rag_only_diagnosis(request: DiagnoseRequest, start_time: float) -> Diagn
     if not references and rag_result.get("references"):
         references = rag_result["references"][:10]
     
-    certainty_result = calculate_certainty_score(rag_result, diagnosis_text, request.query, request.ata_code)
+    certainty_result = calculate_certainty_score(
+        rag_result, diagnosis_text, request.query, request.ata_code,
+        task_type=request.task_type or "fault_isolation"
+    )
     certainty_score = certainty_result["score"]
     certainty_status = "SAFE_TO_PROCEED" if certainty_score >= CERTAINTY_THRESHOLD else "REQUIRE_EXPERT"
     
