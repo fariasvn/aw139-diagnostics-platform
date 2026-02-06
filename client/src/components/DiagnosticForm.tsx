@@ -4,15 +4,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator, SelectLabel, SelectGroup } from "@/components/ui/select";
-import { Send, Upload } from "lucide-react";
-import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Send, Upload, Plane, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+
+interface ConfigurationResolution {
+  serialNumber: string;
+  configuration: string | null;
+  configurationName: string | null;
+  effectivityCode: string | null;
+  source: string | null;
+  sourceRevision: string | null;
+  warning: string | null;
+  isResolved: boolean;
+}
 
 interface DiagnosticFormProps {
   onSubmit: (data: any) => void;
   isLoading?: boolean;
+  onConfigurationResolved?: (config: ConfigurationResolution | null) => void;
 }
 
-export default function DiagnosticForm({ onSubmit, isLoading = false }: DiagnosticFormProps) {
+export default function DiagnosticForm({ onSubmit, isLoading = false, onConfigurationResolved }: DiagnosticFormProps) {
   const [formData, setFormData] = useState({
     aircraftModel: "AW139",
     serialNumber: "",
@@ -20,6 +33,43 @@ export default function DiagnosticForm({ onSubmit, isLoading = false }: Diagnost
     taskType: "fault_isolation",
     problemDescription: "",
   });
+
+  const [configResolution, setConfigResolution] = useState<ConfigurationResolution | null>(null);
+  const [isResolvingConfig, setIsResolvingConfig] = useState(false);
+
+  const resolveSerialConfig = useCallback(async (serial: string) => {
+    if (!serial || serial.length < 4) {
+      setConfigResolution(null);
+      onConfigurationResolved?.(null);
+      return;
+    }
+
+    setIsResolvingConfig(true);
+    try {
+      const response = await fetch(`/api/configuration/resolve/${encodeURIComponent(serial)}`);
+      if (response.ok) {
+        const data: ConfigurationResolution = await response.json();
+        setConfigResolution(data);
+        onConfigurationResolved?.(data);
+      } else {
+        setConfigResolution(null);
+        onConfigurationResolved?.(null);
+      }
+    } catch (error) {
+      console.error("Failed to resolve configuration:", error);
+      setConfigResolution(null);
+      onConfigurationResolved?.(null);
+    } finally {
+      setIsResolvingConfig(false);
+    }
+  }, [onConfigurationResolved]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      resolveSerialConfig(formData.serialNumber);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [formData.serialNumber, resolveSerialConfig]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +109,49 @@ export default function DiagnosticForm({ onSubmit, isLoading = false }: Diagnost
             </div>
           </div>
 
+          {formData.serialNumber.length >= 4 && (
+            <div className="rounded-md border border-border p-3" data-testid="config-resolution-display">
+              {isResolvingConfig ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  <span>Resolving aircraft configuration...</span>
+                </div>
+              ) : configResolution?.isResolved ? (
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    <div className="flex items-center gap-2">
+                      <Plane className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-medium">AW139</span>
+                      <Badge variant="default" className="font-mono font-bold" data-testid="badge-config-code">
+                        {configResolution.configuration}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        ({configResolution.configurationName})
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {configResolution.effectivityCode}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      | {configResolution.source} {configResolution.sourceRevision}
+                    </span>
+                  </div>
+                </div>
+              ) : configResolution?.warning ? (
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-orange-600 dark:text-orange-400">Configuration Not Found</p>
+                    <p className="text-xs text-muted-foreground mt-1">{configResolution.warning}</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="ata-code">ATA Code / Training Material</Label>
             <Select 
@@ -89,7 +182,6 @@ export default function DiagnosticForm({ onSubmit, isLoading = false }: Diagnost
                 <SelectItem value="11">ATA 11 - Placards & Marking</SelectItem>
                 <SelectItem value="12">ATA 12 - Servicing</SelectItem>
 
-                {/* Airframe System Group (20-49) */}
                 <SelectItem value="20">ATA 20 - Std. Practice Airframe</SelectItem>
                 <SelectItem value="21">ATA 21 - Air Conditioning</SelectItem>
                 <SelectItem value="22">ATA 22 - Auto Flight</SelectItem>
@@ -113,7 +205,6 @@ export default function DiagnosticForm({ onSubmit, isLoading = false }: Diagnost
                 <SelectItem value="45">ATA 45 - Central Maintenance System</SelectItem>
                 <SelectItem value="49">ATA 49 - Airborne Aux Power</SelectItem>
 
-                {/* Structures (51-57) */}
                 <SelectItem value="51">ATA 51 - Structures</SelectItem>
                 <SelectItem value="52">ATA 52 - Doors</SelectItem>
                 <SelectItem value="53">ATA 53 - Fuselage</SelectItem>
@@ -122,12 +213,10 @@ export default function DiagnosticForm({ onSubmit, isLoading = false }: Diagnost
                 <SelectItem value="56">ATA 56 - Windows</SelectItem>
                 <SelectItem value="57">ATA 57 - Wings</SelectItem>
 
-                {/* Prop/Rotor (60-65) */}
                 <SelectItem value="60">ATA 60 - Std. Practice Prop/Rotor</SelectItem>
                 <SelectItem value="61">ATA 61 - Propellers</SelectItem>
                 <SelectItem value="65">ATA 65 - Rotors (Helicopter)</SelectItem>
 
-                {/* Power Plant (70-83) */}
                 <SelectItem value="70">ATA 70 - Std. Practice Engine</SelectItem>
                 <SelectItem value="71">ATA 71 - Power Plant</SelectItem>
                 <SelectItem value="72">ATA 72 - Engine</SelectItem>
@@ -143,7 +232,6 @@ export default function DiagnosticForm({ onSubmit, isLoading = false }: Diagnost
                 <SelectItem value="82">ATA 82 - Water Injection</SelectItem>
                 <SelectItem value="83">ATA 83 - Accessory Gear Boxes</SelectItem>
 
-                {/* General */}
                 <SelectItem value="91">ATA 91 - Charts</SelectItem>
                 </SelectGroup>
               </SelectContent>

@@ -1,17 +1,21 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plane, Calendar, Wrench } from "lucide-react";
+import { Plane, Calendar, Wrench, Settings2 } from "lucide-react";
 
 interface AircraftInfoBannerProps {
   model: string;
-  serialNumber: string;
+  serialNumber?: string;
+  configurationCode?: string | null;
+  configurationName?: string | null;
   lastMaintenance?: string;
   activeQueries?: number;
 }
 
 export default function AircraftInfoBanner({ 
   model, 
-  serialNumber, 
+  serialNumber,
+  configurationCode,
+  configurationName,
   lastMaintenance = "2024-11-20",
   activeQueries = 0
 }: AircraftInfoBannerProps) {
@@ -24,10 +28,27 @@ export default function AircraftInfoBanner({
               <Plane className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <h2 className="text-2xl font-semibold font-mono" data-testid="text-aircraft-model">{model}</h2>
-              <p className="text-sm text-muted-foreground">
-                S/N: <span className="font-mono font-medium" data-testid="text-serial-number">{serialNumber}</span>
-              </p>
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-semibold font-mono" data-testid="text-aircraft-model">{model}</h2>
+                {configurationCode && (
+                  <Badge variant="default" className="font-mono font-bold text-sm" data-testid="badge-banner-config">
+                    {configurationCode}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-0.5">
+                {serialNumber && (
+                  <p className="text-sm text-muted-foreground">
+                    S/N: <span className="font-mono font-medium" data-testid="text-serial-number">{serialNumber}</span>
+                  </p>
+                )}
+                {configurationName && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Settings2 className="w-3.5 h-3.5" />
+                    <span data-testid="text-config-name">{configurationName}</span>
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

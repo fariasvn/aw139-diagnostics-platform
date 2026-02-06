@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [historicalMatches, setHistoricalMatches] = useState<any[]>([]);
   const [currentQuery, setCurrentQuery] = useState<any>(null);
   const [isRestored, setIsRestored] = useState(false);
+  const [liveConfig, setLiveConfig] = useState<any>(null);
   const { toast } = useToast();
 
   // Restore state from localStorage on mount
@@ -249,7 +250,7 @@ export default function Dashboard() {
     setUnavailabilityId(null);
     setHistoricalMatches([]);
     setCurrentQuery(null);
-    // Clear localStorage
+    setLiveConfig(null);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY + "_troubleshootingId");
     localStorage.removeItem(STORAGE_KEY + "_unavailabilityId");
@@ -364,7 +365,9 @@ export default function Dashboard() {
     <div className="space-y-6" data-testid="page-dashboard">
       <AircraftInfoBanner 
         model="AW139"
-        serialNumber="41287"
+        serialNumber={diagnosticResult?.aircraft?.serialNumber || liveConfig?.serialNumber || undefined}
+        configurationCode={diagnosticResult?.aircraft?.configuration?.code || (liveConfig?.isResolved ? liveConfig?.configuration : null)}
+        configurationName={diagnosticResult?.aircraft?.configuration?.name || (liveConfig?.isResolved ? liveConfig?.configurationName : null)}
         lastMaintenance="2024-11-20"
         activeQueries={3}
       />
@@ -372,7 +375,7 @@ export default function Dashboard() {
       <DisclaimerNotice />
 
       {!diagnosticResult ? (
-        <DiagnosticForm onSubmit={handleDiagnosticSubmit} isLoading={diagnosticMutation.isPending} />
+        <DiagnosticForm onSubmit={handleDiagnosticSubmit} isLoading={diagnosticMutation.isPending} onConfigurationResolved={setLiveConfig} />
       ) : (
         <div className="space-y-6">
           <CertaintyScoreDisplay 
