@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Shield, Plane } from "lucide-react";
+import { Loader2, Shield, Plane, ArrowLeft } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -19,7 +19,11 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-export default function Login() {
+interface LoginProps {
+  onBack?: () => void;
+}
+
+export default function Login({ onBack }: LoginProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +63,18 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4 relative">
+      {onBack && (
+        <Button
+          variant="ghost"
+          className="absolute top-6 left-6"
+          onClick={onBack}
+          data-testid="button-back-to-landing"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar
+        </Button>
+      )}
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">

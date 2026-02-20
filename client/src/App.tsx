@@ -21,6 +21,7 @@ import Login from "@/pages/Login";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
 function AuthenticatedApp() {
   const { user } = useAuth();
@@ -67,8 +68,8 @@ function AuthenticatedApp() {
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [showVPSLogin, setShowVPSLogin] = useState(false);
 
-  // VPS/Production mode: uses email/password login
   const isVPSMode = typeof window !== 'undefined' && 
     !window.location.hostname.includes('replit');
 
@@ -80,12 +81,13 @@ function Router() {
     );
   }
 
-  // Show Login page on VPS when not authenticated
   if (!isAuthenticated && isVPSMode) {
-    return <Login />;
+    if (showVPSLogin) {
+      return <Login onBack={() => setShowVPSLogin(false)} />;
+    }
+    return <Landing isVPS onNavigateToLogin={() => setShowVPSLogin(true)} />;
   }
 
-  // Show Landing on Replit when not authenticated
   if (!isAuthenticated && !isVPSMode) {
     return <Landing />;
   }
