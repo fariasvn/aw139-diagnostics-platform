@@ -25,21 +25,21 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <span className="text-xl font-bold" data-testid="text-app-title">AW139 Smart Troubleshooting</span>
           </div>
           <Button onClick={handleLogin} data-testid="button-login-header">
-            Entrar
+            Sign In
           </Button>
         </header>
 
         <main className="container mx-auto px-6 py-12">
           <section className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl font-bold mb-6" data-testid="text-hero-title">
-              Diagnóstico Inteligente para Manutenção de Helicópteros
+              Intelligent Diagnostics for Helicopter Maintenance
             </h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8" data-testid="text-hero-description">
-              Sistema de IA com 3 agentes especializados e mais de 22.000 documentos embarcados. 
-              Reduza o tempo de diagnóstico, aumente a precisão e garanta a segurança com análise inteligente.
+              AI system with 3 specialized agents and over 22,000 embedded documents. 
+              Reduce diagnostic time, improve accuracy, and ensure safety with intelligent analysis.
             </p>
             <Button size="lg" onClick={handleLogin} data-testid="button-get-started">
-              Acessar o Sistema <ChevronRight className="ml-2 w-5 h-5" />
+              Access the System <ChevronRight className="ml-2 w-5 h-5" />
             </Button>
           </section>
 
@@ -47,12 +47,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-ai">
               <CardHeader>
                 <Brain className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>3 Agentes de IA</CardTitle>
+                <CardTitle>3 AI Agents</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Investigador, Validador e Supervisor analisam o problema como uma equipe de engenheiros, 
-                  cruzando dados de IETP, AMP e diagramas AWDP
+                  Investigator, Validator and Supervisor analyze the problem like a team of engineers, 
+                  cross-referencing IETP, AMP and AWDP diagrams
                 </CardDescription>
               </CardContent>
             </Card>
@@ -60,12 +60,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-safety">
               <CardHeader>
                 <Shield className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Threshold de Segurança</CardTitle>
+                <CardTitle>Safety Threshold</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Certeza mínima de 95% para prosseguir. Abaixo disso, o sistema recomenda 
-                  consulta ao especialista do MCC automaticamente
+                  95% minimum certainty to proceed. Below that, the system automatically 
+                  recommends consultation with MCC specialist
                 </CardDescription>
               </CardContent>
             </Card>
@@ -73,12 +73,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-deep-analysis">
               <CardHeader>
                 <Search className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Análise Profunda de Sistema</CardTitle>
+                <CardTitle>Deep System Analysis</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Quando a falha não está no manual, a IA analisa diagramas AWDP, 
-                  mapeia caminhos de sinal e deduz causas prováveis
+                  When the fault is not in the manual, the AI analyzes AWDP diagrams, 
+                  maps signal paths and deduces probable causes
                 </CardDescription>
               </CardContent>
             </Card>
@@ -86,12 +86,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-config">
               <CardHeader>
                 <Settings2 className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Configuração Automática</CardTitle>
+                <CardTitle>Automatic Configuration</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Detecção automática de SN/LN/ENH/PLUS pelo serial number, com 
-                  544 códigos IPD de efetividade para verificação de peças
+                  Automatic SN/LN/ENH/PLUS detection by serial number, with 
+                  544 IPD effectivity codes for part verification
                 </CardDescription>
               </CardContent>
             </Card>
@@ -99,12 +99,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-history">
               <CardHeader>
                 <History className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Histórico e Shift Handover</CardTitle>
+                <CardTitle>History & Shift Handover</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Histórico compartilhado entre turnos. Busca e filtro inteligente 
-                  para escalar a centenas de registros sem perder informação
+                  Shared history across shifts. Smart search and filters 
+                  to scale to hundreds of records without losing information
                 </CardDescription>
               </CardContent>
             </Card>
@@ -112,12 +112,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-maintenance">
               <CardHeader>
                 <CalendarCheck className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Manutenção Programada</CardTitle>
+                <CardTitle>Scheduled Maintenance</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Alertas inteligentes por ATA que informam o diagnóstico atual, 
-                  com registro completo de manutenções e Part ON/OFF
+                  Smart ATA-based alerts that inform current diagnostics, 
+                  with complete maintenance logging and Part ON/OFF tracking
                 </CardDescription>
               </CardContent>
             </Card>
@@ -127,12 +127,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-experts">
               <CardHeader>
                 <Users className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Suporte de Especialistas MCC</CardTitle>
+                <CardTitle>MCC Expert Support</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Sistema de disponibilidade de especialistas com perfis, 
-                  contato direto via WhatsApp para chat e chamadas de vídeo
+                  Expert availability system with profiles, 
+                  direct contact via WhatsApp for chat and video calls
                 </CardDescription>
               </CardContent>
             </Card>
@@ -140,12 +140,12 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
             <Card className="hover-elevate" data-testid="card-feature-tools">
               <CardHeader>
                 <Wrench className="w-10 h-10 text-primary mb-2" />
-                <CardTitle>Ferramentas DMC</CardTitle>
+                <CardTitle>DMC Tools</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Seleção automática de ferramentas de crimpagem, 
-                  inserção e extração por tipo de conector, com avisos de segurança
+                  Automatic selection of crimping, insertion and extraction tools 
+                  by connector type, with safety warnings
                 </CardDescription>
               </CardContent>
             </Card>
@@ -154,14 +154,14 @@ export default function Landing({ onNavigateToLogin, isVPS }: LandingProps) {
           <section className="text-center bg-muted rounded-md p-12 mb-8">
             <FileCheck className="w-12 h-12 text-primary mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-4" data-testid="text-cta-title">
-              O profissional pode sair, o conhecimento fica!
+              The professional may leave, the knowledge stays!
             </h2>
             <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Mesmo quando a falha exata não está descrita no manual, se você entende como o sistema funciona, 
-              consegue deduzir o que pode causar o problema. Foi exatamente isso que ensinamos à IA.
+              Even when the exact fault is not described in the manual, if you understand how the system works, 
+              you can deduce what could cause the problem. That is exactly what we taught the AI.
             </p>
             <Button size="lg" onClick={handleLogin} data-testid="button-sign-in-bottom">
-              Entrar no Sistema
+              Sign In Now
             </Button>
           </section>
         </main>

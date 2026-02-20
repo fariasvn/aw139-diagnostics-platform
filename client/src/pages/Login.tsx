@@ -13,8 +13,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Shield, Plane, ArrowLeft } from "lucide-react";
 
 const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(1, "Senha é obrigatória"),
+  email: z.string().email("Invalid email"),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -44,15 +44,15 @@ export default function Login({ onBack }: LoginProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
-        title: "Login realizado",
-        description: "Bem-vindo ao AW139 Smart Troubleshooting Assistant",
+        title: "Login successful",
+        description: "Welcome to AW139 Smart Troubleshooting Assistant",
       });
       setLocation("/");
     },
     onError: (error: any) => {
       toast({
-        title: "Erro no login",
-        description: error.message || "Email ou senha incorretos",
+        title: "Login error",
+        description: error.message || "Incorrect email or password",
         variant: "destructive",
       });
     },
@@ -72,7 +72,7 @@ export default function Login({ onBack }: LoginProps) {
           data-testid="button-back-to-landing"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar
+          Back
         </Button>
       )}
       <Card className="w-full max-w-md">
@@ -84,7 +84,7 @@ export default function Login({ onBack }: LoginProps) {
           </div>
           <CardTitle className="text-2xl">AW139 Smart Troubleshooting</CardTitle>
           <CardDescription>
-            Sistema de Diagnóstico Inteligente para Manutenção
+            Intelligent Diagnostic System for Maintenance
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -99,7 +99,7 @@ export default function Login({ onBack }: LoginProps) {
                     <FormControl>
                       <Input
                         type="email"
-                        placeholder="seu@email.com"
+                        placeholder="your@email.com"
                         data-testid="input-email"
                         {...field}
                       />
@@ -113,7 +113,7 @@ export default function Login({ onBack }: LoginProps) {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Senha</FormLabel>
+                    <FormLabel>Password</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -135,19 +135,19 @@ export default function Login({ onBack }: LoginProps) {
                 {loginMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Entrando...
+                    Signing in...
                   </>
                 ) : (
                   <>
                     <Shield className="mr-2 h-4 w-4" />
-                    Entrar
+                    Sign In
                   </>
                 )}
               </Button>
             </form>
           </Form>
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>O profissional pode sair, o conhecimento fica!</p>
+            <p>The professional may leave, the knowledge stays!</p>
           </div>
         </CardContent>
       </Card>
