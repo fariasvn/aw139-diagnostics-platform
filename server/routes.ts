@@ -115,30 +115,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, password } = req.body;
       
       if (!email || !password) {
-        return res.status(400).json({ message: "Email e senha são obrigatórios" });
+        return res.status(400).json({ message: "Email and password are required" });
       }
       
-      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      let user;
+      try {
+        const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        user = result[0];
+      } catch (dbError: any) {
+        console.error("Login DB error:", dbError?.message || dbError);
+        return res.status(500).json({ message: "Database connection error. Please try again." });
+      }
       
       if (!user) {
-        return res.status(401).json({ message: "Email ou senha incorretos" });
+        return res.status(401).json({ message: "Invalid email or password" });
       }
       
       if (!user.password) {
-        return res.status(401).json({ message: "Usuário não possui senha configurada" });
+        return res.status(401).json({ message: "User does not have a password configured" });
       }
       
       const isValidPassword = await bcrypt.compare(password, user.password);
       
       if (!isValidPassword) {
-        return res.status(401).json({ message: "Email ou senha incorretos" });
+        return res.status(401).json({ message: "Invalid email or password" });
       }
       
       if (user.isActive === 0) {
-        return res.status(403).json({ message: "Conta desativada. Contate o administrador." });
+        return res.status(403).json({ message: "Account disabled. Contact your administrator." });
       }
       
-      // Set session
       req.session.userId = user.id;
       req.session.user = {
         id: user.id,
@@ -160,9 +166,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           planType: user.planType
         }
       });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ message: "Erro interno no login" });
+    } catch (error: any) {
+      console.error("Login error:", error?.message || error);
+      res.status(500).json({ message: "Internal login error. Check server logs." });
     }
   });
   
